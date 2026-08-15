@@ -1,0 +1,41 @@
+{
+  "name": "opencode-git-sidebar",
+  "version": "0.1.0",
+  "description": "OpenCode TUI sidebar for Git and GitHub pull request status",
+  "type": "module",
+  "license": "MIT",
+  "files": ["dist", "README.md", "LICENSE"],
+  "exports": {
+    "./tui": {
+      "types": "./dist/tui.d.ts",
+      "import": "./dist/tui.js"
+    }
+  },
+  "engines": {
+    "opencode": ">=1.18.18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "pack:check": "npm pack --dry-run"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.18.18",
+    "@opentui/core": ">=0.5.3",
+    "@opentui/keymap": ">=0.5.3",
+    "@opentui/solid": ">=0.5.3",
+    "solid-js": ">=1.9.12"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "1.18.18",
+    "@opentui/core": "0.5.3",
+    "@opentui/keymap": "0.5.3",
+    "@opentui/solid": "0.5.3",
+    "@types/node": "^24.0.0",
+    "solid-js": "1.9.12",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}
