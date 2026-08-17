@@ -5,9 +5,11 @@ import type {
   TuiSlotPlugin,
   TuiThemeCurrent,
 } from "@opencode-ai/plugin/tui"
+import stringWidth from "string-width"
 import type { RefreshSnapshot } from "./refresh.js"
 
 const SIDEBAR_WIDTH = 28
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" })
 
 type SidebarTheme = Partial<
   Pick<TuiThemeCurrent, "text" | "textMuted" | "primary" | "success" | "warning" | "error" | "border">
@@ -31,7 +33,18 @@ export type SidebarGroup = {
 }
 
 function fit(value: string, width: number): string {
-  return value.length <= width ? value : value.slice(0, Math.max(0, width))
+  const maxWidth = Math.max(0, width)
+  if (stringWidth(value) <= maxWidth) return value
+
+  let result = ""
+  let resultWidth = 0
+  for (const { segment } of graphemeSegmenter.segment(value)) {
+    const segmentWidth = stringWidth(segment)
+    if (resultWidth + segmentWidth > maxWidth) break
+    result += segment
+    resultWidth += segmentWidth
+  }
+  return result
 }
 
 function workingTreeFact(
@@ -55,7 +68,7 @@ function workingTreeFact(
       .filter(Boolean)
       .join(" | "),
   )
-  return facts.find((fact) => fact.length <= width) ?? fit(facts.at(-1) ?? "", width)
+  return facts.find((fact) => stringWidth(fact) <= width) ?? fit(facts.at(-1) ?? "", width)
 }
 
 function pullRequestFact(snapshot: RefreshSnapshot, width: number): string {
@@ -71,7 +84,7 @@ function pullRequestFact(snapshot: RefreshSnapshot, width: number): string {
         ? `${checks.pending}/${checks.total} pending`
         : `${checks.passing}/${checks.total} passing`
   let fact = `#${remote.number} ${remote.state} | ${summary}`
-  if (fact.length > width && checks.failing === 0 && checks.pending === 0) {
+  if (stringWidth(fact) > width && checks.failing === 0 && checks.pending === 0) {
     fact = fact.replace(" passing", " ok")
   }
   return fit(fact, width)
@@ -123,12 +136,10 @@ export type GitSidebarProps = {
   snapshot: RefreshSnapshot
   theme?: SidebarTheme
   onRefresh: () => void
-  width?: number
 }
 
 export function GitSidebar(props: GitSidebarProps) {
-  const width = props.width ?? SIDEBAR_WIDTH
-  const groups = buildSidebarGroups(props.snapshot, width)
+  const groups = buildSidebarGroups(props.snapshot, SIDEBAR_WIDTH)
   if (groups.length === 0) return null
 
   const theme = {
@@ -149,8 +160,8 @@ export function GitSidebar(props: GitSidebarProps) {
   }
 
   return (
-    <box flexDirection="column" width={width}>
-      <box flexDirection="row" justifyContent="space-between" width={width}>
+    <box flexDirection="column" width={SIDEBAR_WIDTH}>
+      <box flexDirection="row" justifyContent="space-between" width={SIDEBAR_WIDTH}>
         <text fg={theme.text} attributes={createTextAttributes({ bold: true })}>
           GIT
         </text>
@@ -160,7 +171,7 @@ export function GitSidebar(props: GitSidebarProps) {
       </box>
       {groups.map((group, index) => (
         <>
-          {index > 0 ? <text fg={theme.border}>{"-".repeat(width)}</text> : null}
+          {index > 0 ? <text fg={theme.border}>{"-".repeat(SIDEBAR_WIDTH)}</text> : null}
           <text fg={theme.muted}>{group.header}</text>
           <text fg={group.stale ? theme.muted : tones[group.tone]}>{group.fact}</text>
         </>
@@ -182,7 +193,6 @@ export function sidebarSlot(
           snapshot={snapshot()}
           theme={ctx.theme?.current ?? api.theme?.current}
           onRefresh={onRefresh}
-          width={SIDEBAR_WIDTH}
         />
       ),
     },

@@ -1,6 +1,7 @@
 import type { TuiPluginApi, TuiSlotContext } from "@opencode-ai/plugin/tui"
+import stringWidth from "string-width"
 import { expect, it, vi } from "vitest"
-import { buildSidebarGroups, sidebarSlot } from "../src/sidebar.js"
+import { buildSidebarGroups, GitSidebar, sidebarSlot } from "../src/sidebar.js"
 
 vi.mock("@opentui/solid/jsx-runtime", () => {
   const Fragment = (props: { children?: unknown }) => props.children ?? null
@@ -40,6 +41,8 @@ const textValue = (value: unknown): string =>
 const textOf = (element: TestElement) => textValue(element.props.children)
 
 const snapshot = (input?: {
+  branch?: string
+  worktree?: string
   staged?: number
   modified?: number
   untracked?: number
@@ -48,8 +51,8 @@ const snapshot = (input?: {
   local: {
     value: {
       repository: true as const,
-      branch: "feat/sidebar",
-      worktree: "cobtask",
+      branch: input?.branch ?? "feat/sidebar",
+      worktree: input?.worktree ?? "cobtask",
       staged: input?.staged ?? 0,
       modified: input?.modified ?? 0,
       untracked: input?.untracked ?? 0,
@@ -160,6 +163,29 @@ it("shortens only a passing pull-request summary when required", () => {
   expect(buildSidebarGroups(snapshot(), 19)[3].fact).toBe("#142 OPEN | 8/8 ok")
 })
 
+it("fits CJK facts to 28 terminal cells", () => {
+  const fact = buildSidebarGroups(snapshot({ branch: "界".repeat(20) }), 28)[0].fact
+
+  expect(fact).toBe("界".repeat(14))
+  expect(stringWidth(fact)).toBeLessThanOrEqual(28)
+})
+
+it("fits emoji facts without splitting graphemes", () => {
+  const emoji = "👩‍💻"
+  const fact = buildSidebarGroups(snapshot({ branch: emoji.repeat(20) }), 28)[0].fact
+
+  expect(fact).toBe(emoji.repeat(14))
+  expect(stringWidth(fact)).toBeLessThanOrEqual(28)
+})
+
+it("counts combining marks as zero terminal cells", () => {
+  const branch = "e\u0301".repeat(28)
+  const fact = buildSidebarGroups(snapshot({ branch }), 28)[0].fact
+
+  expect(fact).toBe(branch)
+  expect(stringWidth(fact)).toBe(28)
+})
+
 it("registers only the sidebar content slot at order 75", () => {
   const plugin = sidebarSlot({} as TuiPluginApi, snapshot, vi.fn())
 
@@ -212,6 +238,20 @@ it("renders the approved vertical stack with themed rows and ASCII dividers", ()
   expect(row("feat/sidebar")?.props.fg).toBe(colors.primary)
   expect(row("clean")?.props.fg).toBe(colors.success)
   expect(row("----------------------------")?.props.fg).toBe(colors.border)
+})
+
+it("keeps the renderer and dividers fixed at 28 columns", () => {
+  const props = {
+    snapshot: snapshot(),
+    onRefresh: vi.fn(),
+    width: 10,
+  }
+  const view = GitSidebar(props) as unknown as TestElement
+  const rows = elements(view.props.children)
+
+  expect(view.props.width).toBe(28)
+  expect(rows[0].props.width).toBe(28)
+  expect(rows.filter((row) => textOf(row) === "----------------------------")).toHaveLength(3)
 })
 
 it("invokes refresh from the header control", () => {
