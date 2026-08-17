@@ -221,6 +221,116 @@ it("waits for an old remote request before collecting the changed context", asyn
   )
 })
 
+it("queues changed-context local work and suppresses the old local result", async () => {
+  const oldLocal = {
+    repository: true as const,
+    branch: "feat/sidebar",
+    worktree: "repo",
+    staged: 0,
+    modified: 0,
+    untracked: 0,
+  }
+  const newLocal = {
+    repository: true as const,
+    branch: "fix/sidebar",
+    worktree: "other",
+    staged: 1,
+    modified: 0,
+    untracked: 0,
+  }
+  let resolveOldLocal!: (value: typeof oldLocal) => void
+  const oldLocalResult = new Promise<typeof oldLocal>(
+    (resolve) => (resolveOldLocal = resolve),
+  )
+  const local = vi
+    .fn()
+    .mockImplementationOnce(() => oldLocalResult)
+    .mockResolvedValueOnce(newLocal)
+  const onChange = vi.fn()
+  let context = { cwd: "/repo", branch: "feat/sidebar" }
+  const controller = createRefreshController({
+    options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
+    context: () => context,
+    collectLocal: local,
+    collectRemote: vi.fn().mockResolvedValue({ kind: "none" as const }),
+    onChange,
+  })
+
+  void controller.refreshLocal()
+  context = { cwd: "/other", branch: "fix/sidebar" }
+  const changedRefresh = controller.refreshLocal()
+
+  expect(local).toHaveBeenCalledTimes(1)
+
+  resolveOldLocal(oldLocal)
+  await changedRefresh
+
+  expect(local).toHaveBeenCalledTimes(2)
+  expect(local).toHaveBeenLastCalledWith(
+    expect.objectContaining({ cwd: "/other" }),
+  )
+  expect(
+    onChange.mock.calls.some(
+      ([snapshot]) => snapshot.local.value?.repository && snapshot.local.value.branch === "feat/sidebar",
+    ),
+  ).toBe(false)
+  expect(onChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ local: { value: newLocal, stale: false } }),
+  )
+})
+
+it("invalidates both values when remote observes a changed context first", async () => {
+  const initialLocal = {
+    repository: true as const,
+    branch: "feat/sidebar",
+    worktree: "repo",
+    staged: 0,
+    modified: 0,
+    untracked: 0,
+  }
+  const newRemote = { kind: "none" as const }
+  let resolveNewRemote!: (value: typeof newRemote) => void
+  const newRemoteResult = new Promise<typeof newRemote>(
+    (resolve) => (resolveNewRemote = resolve),
+  )
+  const remote = vi
+    .fn()
+    .mockResolvedValueOnce({
+      kind: "ready" as const,
+      number: 1,
+      state: "OPEN" as const,
+      checks: { total: 1, passing: 1, pending: 0, failing: 0 },
+    })
+    .mockImplementationOnce(() => newRemoteResult)
+  const onChange = vi.fn()
+  let context = { cwd: "/repo", branch: "feat/sidebar" }
+  const controller = createRefreshController({
+    options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
+    context: () => context,
+    collectLocal: vi.fn().mockResolvedValue(initialLocal),
+    collectRemote: remote,
+    onChange,
+  })
+
+  await controller.refreshAll()
+  onChange.mockClear()
+  context = { cwd: "/other", branch: "fix/sidebar" }
+  const changedRefresh = controller.refreshRemote()
+
+  expect(onChange).toHaveBeenLastCalledWith({
+    local: { value: null, stale: false },
+    remote: { value: null, stale: false },
+  })
+
+  resolveNewRemote(newRemote)
+  await changedRefresh
+
+  expect(onChange).toHaveBeenLastCalledWith({
+    local: { value: null, stale: false },
+    remote: { value: newRemote, stale: false },
+  })
+})
+
 it("aborts active work and prevents timer or callback activity after disposal", async () => {
   const localState = {
     repository: true as const,
@@ -265,5 +375,30 @@ it("aborts active work and prevents timer or callback activity after disposal", 
 
   expect(local).toHaveBeenCalledTimes(1)
   expect(remote).toHaveBeenCalledTimes(1)
+  expect(onChange).not.toHaveBeenCalled()
+})
+
+it("makes start and source refreshes no-ops after disposal", async () => {
+  const context = vi.fn(() => ({ cwd: "/repo", branch: "feat/sidebar" }))
+  const local = vi.fn().mockResolvedValue({ repository: false as const })
+  const remote = vi.fn().mockResolvedValue({ kind: "none" as const })
+  const onChange = vi.fn()
+  const controller = createRefreshController({
+    options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
+    context,
+    collectLocal: local,
+    collectRemote: remote,
+    onChange,
+  })
+
+  controller.dispose()
+  await controller.refreshLocal()
+  await controller.refreshRemote()
+  controller.start()
+  await vi.advanceTimersByTimeAsync(60_000)
+
+  expect(context).not.toHaveBeenCalled()
+  expect(local).not.toHaveBeenCalled()
+  expect(remote).not.toHaveBeenCalled()
   expect(onChange).not.toHaveBeenCalled()
 })

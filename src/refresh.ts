@@ -36,6 +36,7 @@ export function createRefreshController(deps: {
   let localTimer: ReturnType<typeof setInterval> | undefined
   let remoteTimer: ReturnType<typeof setInterval> | undefined
   let localInFlight: Promise<void> | undefined
+  let localInFlightKey: string | undefined
   let remoteInFlight: Promise<void> | undefined
   let remoteInFlightKey: string | undefined
   let lastContextKey: string | undefined
@@ -51,38 +52,62 @@ export function createRefreshController(deps: {
 
   const keyFor = ({ cwd, branch }: RefreshContext) => `${cwd}\0${branch}`
 
-  const refreshLocal = () => {
-    if (localInFlight) return localInFlight
-    const operation = (async () => {
-      const { cwd, branch } = deps.context()
-      const contextKey = keyFor({ cwd, branch })
-      const contextChanged = lastContextKey !== undefined && contextKey !== lastContextKey
-      lastContextKey = contextKey
-      if (contextChanged) {
-        snapshot = {
-          local: { value: null, stale: false },
-          remote: { value: null, stale: false },
-        }
-        notify()
+  const observeContext = (contextKey: string) => {
+    const contextChanged = lastContextKey !== undefined && contextKey !== lastContextKey
+    lastContextKey = contextKey
+    if (contextChanged) {
+      snapshot = {
+        local: { value: null, stale: false },
+        remote: { value: null, stale: false },
       }
+      notify()
+    }
+    return contextChanged
+  }
+
+  const refreshLocal = () => {
+    if (disposed) return Promise.resolve()
+    const context = deps.context()
+    const contextKey = keyFor(context)
+    const contextChanged = observeContext(contextKey)
+    if (localInFlight) {
+      if (localInFlightKey === contextKey) return localInFlight
+      return localInFlight.then(async () => {
+        if (disposed) return
+        await refreshLocal()
+        if (contextChanged) await refreshRemote()
+      })
+    }
+    const operation = (async () => {
       try {
-        const value = await deps.collectLocal({ cwd, signal: abortController.signal })
+        const value = await deps.collectLocal({
+          cwd: context.cwd,
+          signal: abortController.signal,
+        })
+        if (lastContextKey !== contextKey) return
         snapshot = { ...snapshot, local: { value, stale: false } }
       } catch {
+        if (lastContextKey !== contextKey) return
         snapshot = { ...snapshot, local: { ...snapshot.local, stale: true } }
       }
       notify()
       if (contextChanged) await refreshRemote()
     })().finally(() => {
-      if (localInFlight === operation) localInFlight = undefined
+      if (localInFlight === operation) {
+        localInFlight = undefined
+        localInFlightKey = undefined
+      }
     })
     localInFlight = operation
+    localInFlightKey = contextKey
     return operation
   }
 
   const refreshRemote: RefreshController["refreshRemote"] = () => {
+    if (disposed) return Promise.resolve()
     const context = deps.context()
     const contextKey = keyFor(context)
+    observeContext(contextKey)
     if (remoteInFlight) {
       if (remoteInFlightKey === contextKey) return remoteInFlight
       return remoteInFlight.then(() => (disposed ? undefined : refreshRemote()))
@@ -93,10 +118,10 @@ export function createRefreshController(deps: {
           ...context,
           signal: abortController.signal,
         })
-        if (keyFor(deps.context()) !== contextKey) return
+        if (lastContextKey !== contextKey) return
         snapshot = { ...snapshot, remote: { value, stale: false } }
       } catch {
-        if (keyFor(deps.context()) !== contextKey) return
+        if (lastContextKey !== contextKey) return
         snapshot = { ...snapshot, remote: { ...snapshot.remote, stale: true } }
       }
       notify()
@@ -117,7 +142,7 @@ export function createRefreshController(deps: {
 
   return {
     start() {
-      if (localTimer || remoteTimer) return
+      if (disposed || localTimer || remoteTimer) return
       void refreshAll()
       localTimer = setInterval(() => void refreshLocal(), deps.options.localRefreshMs)
       remoteTimer = setInterval(() => void refreshRemote(), deps.options.remoteRefreshMs)
