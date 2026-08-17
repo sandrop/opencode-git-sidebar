@@ -19,7 +19,15 @@ export type PullRequestState =
 
 const pullRequestStates = new Set(["OPEN", "CLOSED", "MERGED"])
 const passingConclusions = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"])
-const pendingStatuses = new Set(["QUEUED", "EXPECTED", "PENDING", "IN_PROGRESS"])
+const pendingStatuses = new Set([
+  "QUEUED",
+  "EXPECTED",
+  "PENDING",
+  "IN_PROGRESS",
+  "REQUESTED",
+  "WAITING",
+])
+const statusContextStates = new Set(["SUCCESS", "PENDING", "FAILURE", "ERROR"])
 
 function invalidGhJson(): never {
   throw new Error("Invalid gh JSON")
@@ -38,6 +46,8 @@ export function parsePullRequestJson(output: string): PullRequestState {
     value === null ||
     !("number" in value) ||
     typeof value.number !== "number" ||
+    !Number.isSafeInteger(value.number) ||
+    value.number <= 0 ||
     !("state" in value) ||
     typeof value.state !== "string" ||
     !pullRequestStates.has(value.state) ||
@@ -55,9 +65,26 @@ export function parsePullRequestJson(output: string): PullRequestState {
   }
 
   for (const check of value.statusCheckRollup) {
+    if (typeof check !== "object" || check === null) {
+      invalidGhJson()
+    }
+
+    if ("state" in check) {
+      if (typeof check.state !== "string" || !statusContextStates.has(check.state)) {
+        invalidGhJson()
+      }
+
+      if (check.state === "SUCCESS") {
+        checks.passing += 1
+      } else if (check.state === "PENDING") {
+        checks.pending += 1
+      } else {
+        checks.failing += 1
+      }
+      continue
+    }
+
     if (
-      typeof check !== "object" ||
-      check === null ||
       !("status" in check) ||
       typeof check.status !== "string" ||
       !("conclusion" in check) ||

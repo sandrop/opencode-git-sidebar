@@ -48,8 +48,58 @@ describe("parsePullRequestJson", () => {
     })
   })
 
+  it("classifies status context states", () => {
+    const output = JSON.stringify({
+      number: 142,
+      state: "OPEN",
+      statusCheckRollup: [
+        { state: "SUCCESS" },
+        { state: "PENDING" },
+        { state: "FAILURE" },
+        { state: "ERROR" },
+      ],
+    })
+
+    expect(parsePullRequestJson(output)).toMatchObject({
+      checks: { total: 4, passing: 1, pending: 1, failing: 2 },
+    })
+  })
+
+  it("classifies requested and waiting check runs as pending", () => {
+    const output = JSON.stringify({
+      number: 142,
+      state: "OPEN",
+      statusCheckRollup: [
+        { status: "REQUESTED", conclusion: null },
+        { status: "WAITING", conclusion: null },
+      ],
+    })
+
+    expect(parsePullRequestJson(output)).toMatchObject({
+      checks: { total: 2, passing: 0, pending: 2, failing: 0 },
+    })
+  })
+
+  it.each([
+    { state: "UNKNOWN" },
+    { state: 1 },
+    { status: "COMPLETED" },
+  ])("rejects an invalid check shape", (check) => {
+    const output = JSON.stringify({
+      number: 142,
+      state: "OPEN",
+      statusCheckRollup: [check],
+    })
+
+    expect(() => parsePullRequestJson(output)).toThrow("Invalid gh JSON")
+  })
+
   it.each([
     { number: "142", state: "OPEN", statusCheckRollup: [] },
+    { number: 0, state: "OPEN", statusCheckRollup: [] },
+    { number: -1, state: "OPEN", statusCheckRollup: [] },
+    { number: 1.5, state: "OPEN", statusCheckRollup: [] },
+    { number: Number.MAX_SAFE_INTEGER + 1, state: "OPEN", statusCheckRollup: [] },
     { number: 142, state: "DRAFT", statusCheckRollup: [] },
     { number: 142, state: "OPEN", statusCheckRollup: null },
   ])("rejects an invalid pull request shape", (value) => {
