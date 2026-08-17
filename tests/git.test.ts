@@ -26,6 +26,30 @@ describe("parseGitStatus", () => {
       untracked: 0,
     })
   })
+
+  it("counts a renamed path once per index and worktree category", () => {
+    const output =
+      "2 RM N... 100644 100644 100644 abc def R100 renamed.ts\toriginal.ts\n"
+
+    expect(parseGitStatus(output)).toEqual({
+      branch: "",
+      staged: 1,
+      modified: 1,
+      untracked: 0,
+    })
+  })
+
+  it("counts an unmerged path once per index and worktree category", () => {
+    const output =
+      "u UU N... 100644 100644 100644 100644 abc def ghi conflicted.ts\n"
+
+    expect(parseGitStatus(output)).toEqual({
+      branch: "",
+      staged: 1,
+      modified: 1,
+      untracked: 0,
+    })
+  })
 })
 
 it("collects status in the supplied worktree", async () => {
