@@ -65,6 +65,18 @@ describe("parsePullRequestJson", () => {
     })
   })
 
+  it("classifies an expected status context as pending", () => {
+    const output = JSON.stringify({
+      number: 142,
+      state: "OPEN",
+      statusCheckRollup: [{ state: "EXPECTED" }],
+    })
+
+    expect(parsePullRequestJson(output)).toMatchObject({
+      checks: { total: 1, passing: 0, pending: 1, failing: 0 },
+    })
+  })
+
   it("classifies requested and waiting check runs as pending", () => {
     const output = JSON.stringify({
       number: 142,

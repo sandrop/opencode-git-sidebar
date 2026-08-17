@@ -27,7 +27,7 @@ const pendingStatuses = new Set([
   "REQUESTED",
   "WAITING",
 ])
-const statusContextStates = new Set(["SUCCESS", "PENDING", "FAILURE", "ERROR"])
+const statusContextStates = new Set(["SUCCESS", "PENDING", "EXPECTED", "FAILURE", "ERROR"])
 
 function invalidGhJson(): never {
   throw new Error("Invalid gh JSON")
@@ -76,7 +76,7 @@ export function parsePullRequestJson(output: string): PullRequestState {
 
       if (check.state === "SUCCESS") {
         checks.passing += 1
-      } else if (check.state === "PENDING") {
+      } else if (check.state === "PENDING" || check.state === "EXPECTED") {
         checks.pending += 1
       } else {
         checks.failing += 1
