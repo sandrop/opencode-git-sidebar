@@ -59,9 +59,11 @@ The sidebar displays four vertical groups:
 Select the clickable `refresh` action in the Git header to refresh all groups.
 The command palette provides the same action as `Git Sidebar: Refresh`.
 
-GitHub integration is optional. If `gh` is missing, unauthenticated, or unable
-to access the repository, Pull Request shows `GitHub unavailable` while the
-local Git groups continue to work.
+GitHub integration is optional. Missing `gh`, recognized authentication
+errors, and missing or unsupported GitHub remotes show `GitHub unavailable`
+while the local Git groups continue to work. Other transient GitHub failures
+retain the last successful Pull Request value as stale, or show a muted `none`
+state when no successful value exists yet.
 
 ## License
 
