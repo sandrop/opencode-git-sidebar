@@ -19,6 +19,7 @@ The first version supports:
 - Automatic local and remote refresh loops
 - Clickable and command-palette manual refresh
 - GitHub access through the authenticated `gh` CLI
+- Distribution as an MIT-licensed public package
 
 The first version does not support:
 
@@ -34,6 +35,7 @@ The first version does not support:
 target-exclusive `./tui` entrypoint compatible with OpenCode 1.18.18 or newer.
 The default export follows the OpenCode TUI module shape and registers one
 `sidebar_content` component through `api.slots.register(...)`.
+Package maintenance assumes public npm distribution under the MIT license.
 
 The plugin uses SolidJS signals for collected state and OpenTUI primitives for
 rendering. The plugin reads the active branch and worktree from `api.state` and
