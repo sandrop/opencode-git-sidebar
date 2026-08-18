@@ -7,6 +7,7 @@ it("activates the sidebar, palette refresh, and controller lifecycle", async () 
   const slotPlugins: TuiSlotPlugin[] = []
   const commandLayers: Array<Parameters<TuiPluginApi["keymap"]["registerLayer"]>[0]> = []
   const disposals: TuiDispose[] = []
+  const disposeCommandLayer = vi.fn()
   const api = {
     state: {
       path: { worktree: "/repo/worktree", directory: "/repo/directory" },
@@ -21,7 +22,7 @@ it("activates the sidebar, palette refresh, and controller lifecycle", async () 
     keymap: {
       registerLayer: vi.fn((layer: (typeof commandLayers)[number]) => {
         commandLayers.push(layer)
-        return vi.fn()
+        return disposeCommandLayer
       }),
     },
     lifecycle: {
@@ -76,5 +77,62 @@ it("activates the sidebar, palette refresh, and controller lifecycle", async () 
   expect(controller.refreshAll).toHaveBeenCalledTimes(1)
 
   await disposals[0]()
+  expect(disposeCommandLayer).toHaveBeenCalledTimes(1)
   expect(controller.dispose).toHaveBeenCalledTimes(1)
+})
+
+it("removes the palette command before reactivation", async () => {
+  const commandLayers: Array<Parameters<TuiPluginApi["keymap"]["registerLayer"]>[0]> = []
+  const disposals: TuiDispose[] = []
+  const api = {
+    state: {
+      path: { worktree: "/repo/worktree", directory: "/repo/directory" },
+      vcs: { branch: "feat/sidebar" },
+    },
+    slots: { register: vi.fn(() => "git-sidebar") },
+    keymap: {
+      registerLayer: vi.fn((layer: (typeof commandLayers)[number]) => {
+        commandLayers.push(layer)
+        return () => {
+          const index = commandLayers.indexOf(layer)
+          if (index >= 0) commandLayers.splice(index, 1)
+        }
+      }),
+    },
+    lifecycle: {
+      onDispose: vi.fn((dispose: TuiDispose) => {
+        disposals.push(dispose)
+        return vi.fn()
+      }),
+    },
+  } as unknown as TuiPluginApi
+  const controllers: RefreshController[] = []
+  const createController = vi.fn<typeof createRefreshController>(() => {
+    const controller = {
+      start: vi.fn(),
+      refreshLocal: vi.fn(),
+      refreshRemote: vi.fn(),
+      refreshAll: vi.fn(),
+      dispose: vi.fn(),
+    } satisfies RefreshController
+    controllers.push(controller)
+    return controller
+  })
+  const deps = {
+    runner: vi.fn(),
+    collectLocal: vi.fn(),
+    collectRemote: vi.fn(),
+    createRefreshController: createController,
+  }
+
+  await activate(api, undefined, deps)
+  expect(commandLayers).toHaveLength(1)
+
+  await disposals[0]()
+  await activate(api, undefined, deps)
+
+  expect(commandLayers).toHaveLength(1)
+  await commandLayers[0].commands?.[0].run({} as never)
+  expect(controllers[0].refreshAll).not.toHaveBeenCalled()
+  expect(controllers[1].refreshAll).toHaveBeenCalledTimes(1)
 })

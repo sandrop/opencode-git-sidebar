@@ -58,6 +58,7 @@ const snapshot = (input?: {
       untracked: input?.untracked ?? 0,
     },
     stale: false,
+    status: "ready" as const,
   },
   remote: {
     value: {
@@ -67,6 +68,7 @@ const snapshot = (input?: {
       checks: input?.checks ?? { total: 8, passing: 8, pending: 0, failing: 0 },
     },
     stale: false,
+    status: "ready" as const,
   },
 })
 
@@ -97,6 +99,7 @@ it("builds the approved four vertical groups", () => {
           untracked: 1,
         },
         stale: false,
+        status: "ready",
       },
       remote: {
         value: {
@@ -106,6 +109,7 @@ it("builds the approved four vertical groups", () => {
           checks: { total: 8, passing: 8, pending: 0, failing: 0 },
         },
         stale: false,
+        status: "ready",
       },
     },
     28,
@@ -126,12 +130,53 @@ it("hides the section outside a repository", () => {
   expect(
     buildSidebarGroups(
       {
-        local: { value: { repository: false }, stale: false },
-        remote: { value: null, stale: false },
+        local: { value: { repository: false }, stale: false, status: "ready" },
+        remote: { value: null, stale: false, status: "loading" },
       },
       28,
     ),
   ).toEqual([])
+})
+
+it("renders a concise muted state after the initial local collection fails", () => {
+  expect(
+    buildSidebarGroups(
+      {
+        local: { value: null, stale: false, status: "error" },
+        remote: { value: null, stale: false, status: "loading" },
+      },
+      28,
+    ),
+  ).toEqual([
+    {
+      header: "STATUS",
+      fact: "Git status unavailable",
+      tone: "muted",
+      stale: false,
+    },
+  ])
+})
+
+it.each([
+  [{ value: null, stale: false, status: "loading" as const }, "loading"],
+  [{ value: null, stale: false, status: "error" as const }, "refresh failed"],
+  [
+    {
+      value: { kind: "unavailable" as const, message: "GitHub unavailable" as const },
+      stale: false,
+      status: "ready" as const,
+    },
+    "GitHub unavailable",
+  ],
+  [
+    { value: { kind: "none" as const }, stale: false, status: "ready" as const },
+    "no pull request",
+  ],
+])("distinguishes Pull Request state %#", (remote, expected) => {
+  const groups = buildSidebarGroups({ ...snapshot(), remote }, 28)
+
+  expect(groups[3].fact).toBe(expected)
+  expect(groups[3].tone).toBe("muted")
 })
 
 it("omits zero working-tree counts and renders clean when all counts are zero", () => {
@@ -195,8 +240,8 @@ it("registers only the sidebar content slot at order 75", () => {
 
 it("reads the current snapshot while rendering and hides an empty group list", () => {
   const readSnapshot = vi.fn(() => ({
-    local: { value: { repository: false as const }, stale: false },
-    remote: { value: null, stale: false },
+    local: { value: { repository: false as const }, stale: false, status: "ready" as const },
+    remote: { value: null, stale: false, status: "loading" as const },
   }))
   const renderSidebar = sidebarSlot({} as TuiPluginApi, readSnapshot, vi.fn()).slots
     .sidebar_content

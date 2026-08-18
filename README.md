@@ -60,10 +60,14 @@ Select the clickable `refresh` action in the Git header to refresh all groups.
 The command palette provides the same action as `Git Sidebar: Refresh`.
 
 GitHub integration is optional. Missing `gh`, recognized authentication
-errors, and missing or unsupported GitHub remotes show `GitHub unavailable`
-while the local Git groups continue to work. Other transient GitHub failures
-retain the last successful Pull Request value as stale, or show a muted `none`
-state when no successful value exists yet.
+errors, and missing or unsupported GitHub remotes show muted
+`GitHub unavailable` while the local Git groups continue to work. Pull Request
+shows muted `loading`, `refresh failed`, or `no pull request` states separately.
+Transient failures retain the last successful Pull Request value as stale.
+
+An initial local Git failure shows muted `Git status unavailable`. Later local
+failures retain the last successful Git values as stale. A confirmed non-Git
+directory still hides the complete Git section.
 
 ## License
 

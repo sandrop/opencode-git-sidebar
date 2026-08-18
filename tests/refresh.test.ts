@@ -98,9 +98,83 @@ it("retains the last successful value as stale when one collector fails", async 
   await controller.refreshLocal()
 
   expect(onChange).toHaveBeenLastCalledWith({
-    local: { value: localState, stale: true },
-    remote: { value: remoteState, stale: false },
+    local: { value: localState, stale: true, status: "ready" },
+    remote: { value: remoteState, stale: false, status: "ready" },
   })
+})
+
+it("marks an initial collection failure as an error rather than stale loading state", async () => {
+  const onChange = vi.fn()
+  const controller = createRefreshController({
+    options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
+    context: () => ({ cwd: "/repo", branch: "feat/sidebar" }),
+    collectLocal: vi.fn().mockRejectedValue(new Error("git timed out")),
+    collectRemote: vi.fn().mockRejectedValue(new Error("gh timed out")),
+    onChange,
+  })
+
+  await controller.refreshAll()
+
+  expect(onChange).toHaveBeenLastCalledWith({
+    local: { value: null, stale: false, status: "error" },
+    remote: { value: null, stale: false, status: "error" },
+  })
+})
+
+it("uses the successful local Git branch for remote collection when host state lags", async () => {
+  const localState = {
+    repository: true as const,
+    branch: "branch-b",
+    worktree: "repo",
+    staged: 0,
+    modified: 0,
+    untracked: 0,
+  }
+  const pullRequests = {
+    "branch-a": {
+      kind: "ready" as const,
+      number: 1,
+      state: "OPEN" as const,
+      checks: { total: 1, passing: 1, pending: 0, failing: 0 },
+    },
+    "branch-b": {
+      kind: "ready" as const,
+      number: 2,
+      state: "OPEN" as const,
+      checks: { total: 1, passing: 1, pending: 0, failing: 0 },
+    },
+  }
+  const onChange = vi.fn()
+  const remote = vi.fn(({ branch }: { branch: string }) =>
+    Promise.resolve(branch === "branch-b" ? pullRequests["branch-b"] : pullRequests["branch-a"]),
+  )
+  const controller = createRefreshController({
+    options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
+    context: () => ({ cwd: "/repo", branch: "branch-a" }),
+    collectLocal: vi.fn().mockResolvedValue(localState),
+    collectRemote: remote,
+    onChange,
+  })
+
+  await controller.refreshAll()
+
+  expect(remote).toHaveBeenLastCalledWith(
+    expect.objectContaining({ cwd: "/repo", branch: "branch-b" }),
+  )
+  expect(remote).toHaveBeenCalledTimes(2)
+  expect(onChange).toHaveBeenLastCalledWith({
+    local: { value: localState, stale: false, status: "ready" },
+    remote: { value: pullRequests["branch-b"], stale: false, status: "ready" },
+  })
+  expect(
+    onChange.mock.calls.some(
+      ([snapshot]) =>
+        snapshot.local.value?.repository &&
+        snapshot.local.value.branch === "branch-b" &&
+        snapshot.remote.value?.kind === "ready" &&
+        snapshot.remote.value.number === 1,
+    ),
+  ).toBe(false)
 })
 
 it("invalidates old state and refreshes both sources when context changes", async () => {
@@ -145,8 +219,8 @@ it("invalidates old state and refreshes both sources when context changes", asyn
   await vi.advanceTimersByTimeAsync(10_000)
 
   expect(onChange).toHaveBeenLastCalledWith({
-    local: { value: null, stale: false },
-    remote: { value: null, stale: false },
+    local: { value: null, stale: false, status: "loading" },
+    remote: { value: null, stale: false, status: "loading" },
   })
   expect(remote).toHaveBeenCalledTimes(1)
 
@@ -175,14 +249,24 @@ it("waits for an old remote request before collecting the changed context", asyn
   const oldRemoteResult = new Promise<typeof oldRemote>(
     (resolve) => (resolveOldRemote = resolve),
   )
-  const local = vi.fn().mockResolvedValue({
-    repository: true as const,
-    branch: "feat/sidebar",
-    worktree: "repo",
-    staged: 0,
-    modified: 0,
-    untracked: 0,
-  })
+  const local = vi
+    .fn()
+    .mockResolvedValueOnce({
+      repository: true as const,
+      branch: "feat/sidebar",
+      worktree: "repo",
+      staged: 0,
+      modified: 0,
+      untracked: 0,
+    })
+    .mockResolvedValueOnce({
+      repository: true as const,
+      branch: "fix/sidebar",
+      worktree: "other",
+      staged: 0,
+      modified: 0,
+      untracked: 0,
+    })
   const remote = vi
     .fn()
     .mockImplementationOnce(() => oldRemoteResult)
@@ -217,7 +301,7 @@ it("waits for an old remote request before collecting the changed context", asyn
     ),
   ).toBe(false)
   expect(onChange).toHaveBeenLastCalledWith(
-    expect.objectContaining({ remote: { value: newRemote, stale: false } }),
+    expect.objectContaining({ remote: { value: newRemote, stale: false, status: "ready" } }),
   )
 })
 
@@ -247,12 +331,13 @@ it("queues changed-context local work and suppresses the old local result", asyn
     .mockImplementationOnce(() => oldLocalResult)
     .mockResolvedValueOnce(newLocal)
   const onChange = vi.fn()
+  const remote = vi.fn().mockResolvedValue({ kind: "none" as const })
   let context = { cwd: "/repo", branch: "feat/sidebar" }
   const controller = createRefreshController({
     options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
     context: () => context,
     collectLocal: local,
-    collectRemote: vi.fn().mockResolvedValue({ kind: "none" as const }),
+    collectRemote: remote,
     onChange,
   })
 
@@ -275,11 +360,12 @@ it("queues changed-context local work and suppresses the old local result", asyn
     ),
   ).toBe(false)
   expect(onChange).toHaveBeenLastCalledWith(
-    expect.objectContaining({ local: { value: newLocal, stale: false } }),
+    expect.objectContaining({ local: { value: newLocal, stale: false, status: "ready" } }),
   )
+  expect(remote).toHaveBeenCalledTimes(1)
 })
 
-it("invalidates both values when remote observes a changed context first", async () => {
+it("refreshes both values when remote observes a changed context first", async () => {
   const initialLocal = {
     repository: true as const,
     branch: "feat/sidebar",
@@ -288,6 +374,7 @@ it("invalidates both values when remote observes a changed context first", async
     modified: 0,
     untracked: 0,
   }
+  const changedLocal = { ...initialLocal, branch: "fix/sidebar", worktree: "other" }
   const newRemote = { kind: "none" as const }
   let resolveNewRemote!: (value: typeof newRemote) => void
   const newRemoteResult = new Promise<typeof newRemote>(
@@ -304,10 +391,11 @@ it("invalidates both values when remote observes a changed context first", async
     .mockImplementationOnce(() => newRemoteResult)
   const onChange = vi.fn()
   let context = { cwd: "/repo", branch: "feat/sidebar" }
+  const local = vi.fn().mockResolvedValueOnce(initialLocal).mockResolvedValueOnce(changedLocal)
   const controller = createRefreshController({
     options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
     context: () => context,
-    collectLocal: vi.fn().mockResolvedValue(initialLocal),
+    collectLocal: local,
     collectRemote: remote,
     onChange,
   })
@@ -318,17 +406,19 @@ it("invalidates both values when remote observes a changed context first", async
   const changedRefresh = controller.refreshRemote()
 
   expect(onChange).toHaveBeenLastCalledWith({
-    local: { value: null, stale: false },
-    remote: { value: null, stale: false },
+    local: { value: null, stale: false, status: "loading" },
+    remote: { value: null, stale: false, status: "loading" },
   })
 
   resolveNewRemote(newRemote)
   await changedRefresh
 
   expect(onChange).toHaveBeenLastCalledWith({
-    local: { value: null, stale: false },
-    remote: { value: newRemote, stale: false },
+    local: { value: changedLocal, stale: false, status: "ready" },
+    remote: { value: newRemote, stale: false, status: "ready" },
   })
+  expect(local).toHaveBeenCalledTimes(2)
+  expect(remote).toHaveBeenCalledTimes(2)
 })
 
 it("aborts active work and prevents timer or callback activity after disposal", async () => {

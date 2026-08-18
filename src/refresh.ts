@@ -2,9 +2,10 @@ import type { GitState } from "./git.js"
 import type { PullRequestState } from "./github.js"
 import type { ResolvedOptions } from "./tui.js"
 
-type RefreshValue<T> = {
+export type RefreshValue<T> = {
   value: T | null
   stale: boolean
+  status: "loading" | "ready" | "error"
 }
 
 export type RefreshSnapshot = {
@@ -25,6 +26,13 @@ type RefreshContext = {
   branch: string
 }
 
+const loading = <T>(): RefreshValue<T> => ({ value: null, stale: false, status: "loading" })
+
+export const initialRefreshSnapshot = (): RefreshSnapshot => ({
+  local: loading(),
+  remote: loading(),
+})
+
 export function createRefreshController(deps: {
   options: ResolvedOptions
   context: () => RefreshContext
@@ -39,12 +47,12 @@ export function createRefreshController(deps: {
   let localInFlightKey: string | undefined
   let remoteInFlight: Promise<void> | undefined
   let remoteInFlightKey: string | undefined
-  let lastContextKey: string | undefined
+  // Host branch state can lag Git, so host observation and effective collection context stay separate.
+  let observedHostKey: string | undefined
+  let activeContext: RefreshContext | undefined
+  let contextVersion = 0
   let disposed = false
-  let snapshot: RefreshSnapshot = {
-    local: { value: null, stale: false },
-    remote: { value: null, stale: false },
-  }
+  let snapshot = initialRefreshSnapshot()
 
   const notify = () => {
     if (!disposed) deps.onChange(snapshot)
@@ -52,46 +60,75 @@ export function createRefreshController(deps: {
 
   const keyFor = ({ cwd, branch }: RefreshContext) => `${cwd}\0${branch}`
 
-  const observeContext = (contextKey: string) => {
-    const contextChanged = lastContextKey !== undefined && contextKey !== lastContextKey
-    lastContextKey = contextKey
-    if (contextChanged) {
-      snapshot = {
-        local: { value: null, stale: false },
-        remote: { value: null, stale: false },
-      }
-      notify()
+  const observeContext = () => {
+    const hostContext = deps.context()
+    const hostKey = keyFor(hostContext)
+    if (!activeContext) {
+      observedHostKey = hostKey
+      activeContext = hostContext
+      return { context: activeContext, changed: false }
     }
-    return contextChanged
+    if (hostKey === observedHostKey) return { context: activeContext, changed: false }
+
+    observedHostKey = hostKey
+    if (keyFor(hostContext) === keyFor(activeContext)) {
+      return { context: activeContext, changed: false }
+    }
+
+    activeContext = hostContext
+    contextVersion += 1
+    snapshot = initialRefreshSnapshot()
+    notify()
+    return { context: activeContext, changed: true }
   }
 
-  const refreshLocal = () => {
+  const failed = <T>(current: RefreshValue<T>): RefreshValue<T> =>
+    current.value === null
+      ? { value: null, stale: false, status: "error" }
+      : { ...current, stale: true }
+
+  const refreshLocal = (refreshRemoteAfterQueue = false): Promise<void> => {
     if (disposed) return Promise.resolve()
-    const context = deps.context()
+    const observed = observeContext()
+    const context = observed.context
     const contextKey = keyFor(context)
-    const contextChanged = observeContext(contextKey)
+    const version = contextVersion
     if (localInFlight) {
       if (localInFlightKey === contextKey) return localInFlight
-      return localInFlight.then(async () => {
-        if (disposed) return
-        await refreshLocal()
-        if (contextChanged) await refreshRemote()
-      })
+      return localInFlight.then(() =>
+        disposed ? undefined : refreshLocal(refreshRemoteAfterQueue || observed.changed),
+      )
     }
+
     const operation = (async () => {
+      let refreshRemoteAfter = refreshRemoteAfterQueue || observed.changed
       try {
         const value = await deps.collectLocal({
           cwd: context.cwd,
           signal: abortController.signal,
         })
-        if (lastContextKey !== contextKey) return
-        snapshot = { ...snapshot, local: { value, stale: false } }
+        if (contextVersion !== version || keyFor(activeContext ?? context) !== contextKey) return
+
+        if (value.repository && value.branch !== context.branch) {
+          activeContext = { cwd: context.cwd, branch: value.branch }
+          contextVersion += 1
+          snapshot = {
+            local: { value, stale: false, status: "ready" },
+            remote: loading(),
+          }
+          refreshRemoteAfter = true
+        } else {
+          snapshot = {
+            ...snapshot,
+            local: { value, stale: false, status: "ready" },
+          }
+        }
       } catch {
-        if (lastContextKey !== contextKey) return
-        snapshot = { ...snapshot, local: { ...snapshot.local, stale: true } }
+        if (contextVersion !== version || keyFor(activeContext ?? context) !== contextKey) return
+        snapshot = { ...snapshot, local: failed(snapshot.local) }
       }
       notify()
-      if (contextChanged) await refreshRemote()
+      if (refreshRemoteAfter) await refreshRemote()
     })().finally(() => {
       if (localInFlight === operation) {
         localInFlight = undefined
@@ -105,24 +142,35 @@ export function createRefreshController(deps: {
 
   const refreshRemote: RefreshController["refreshRemote"] = () => {
     if (disposed) return Promise.resolve()
-    const context = deps.context()
+    const observed = observeContext()
+    const context = observed.context
     const contextKey = keyFor(context)
-    observeContext(contextKey)
+    const version = contextVersion
+    const localRefresh = observed.changed ? refreshLocal() : undefined
     if (remoteInFlight) {
-      if (remoteInFlightKey === contextKey) return remoteInFlight
-      return remoteInFlight.then(() => (disposed ? undefined : refreshRemote()))
+      const remoteRefresh =
+        remoteInFlightKey === contextKey
+          ? remoteInFlight
+          : remoteInFlight.then(() => (disposed ? undefined : refreshRemote()))
+      return localRefresh
+        ? Promise.all([remoteRefresh, localRefresh]).then(() => undefined)
+        : remoteRefresh
     }
+
     const operation = (async () => {
       try {
         const value = await deps.collectRemote({
           ...context,
           signal: abortController.signal,
         })
-        if (lastContextKey !== contextKey) return
-        snapshot = { ...snapshot, remote: { value, stale: false } }
+        if (contextVersion !== version || keyFor(activeContext ?? context) !== contextKey) return
+        snapshot = {
+          ...snapshot,
+          remote: { value, stale: false, status: "ready" },
+        }
       } catch {
-        if (lastContextKey !== contextKey) return
-        snapshot = { ...snapshot, remote: { ...snapshot.remote, stale: true } }
+        if (contextVersion !== version || keyFor(activeContext ?? context) !== contextKey) return
+        snapshot = { ...snapshot, remote: failed(snapshot.remote) }
       }
       notify()
     })().finally(() => {
@@ -133,7 +181,7 @@ export function createRefreshController(deps: {
     })
     remoteInFlight = operation
     remoteInFlightKey = contextKey
-    return operation
+    return localRefresh ? Promise.all([operation, localRefresh]).then(() => undefined) : operation
   }
 
   const refreshAll = async () => {

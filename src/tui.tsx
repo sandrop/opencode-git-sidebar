@@ -6,6 +6,7 @@ import { collectGitState } from "./git.js"
 import { collectPullRequest } from "./github.js"
 import {
   createRefreshController,
+  initialRefreshSnapshot,
   type RefreshSnapshot,
 } from "./refresh.js"
 import { sidebarSlot } from "./sidebar.js"
@@ -57,10 +58,7 @@ export async function activate(
   dependencies: Partial<ActivationDependencies> = {},
 ): Promise<void> {
   const deps = { ...defaultDependencies, ...dependencies }
-  const [snapshot, setSnapshot] = createSignal<RefreshSnapshot>({
-    local: { value: null, stale: false },
-    remote: { value: null, stale: false },
-  })
+  const [snapshot, setSnapshot] = createSignal<RefreshSnapshot>(initialRefreshSnapshot())
   const controller = deps.createRefreshController({
     options: resolveOptions(options),
     context: () => ({
@@ -74,7 +72,7 @@ export async function activate(
   })
 
   api.slots.register(sidebarSlot(api, snapshot, () => void controller.refreshAll()))
-  api.keymap.registerLayer({
+  const disposeCommandLayer = api.keymap.registerLayer({
     commands: [
       {
         name: "git-sidebar.refresh",
@@ -85,7 +83,10 @@ export async function activate(
       },
     ],
   })
-  api.lifecycle.onDispose(controller.dispose)
+  api.lifecycle.onDispose(() => {
+    disposeCommandLayer()
+    controller.dispose()
+  })
   controller.start()
 }
 

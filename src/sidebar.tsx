@@ -26,9 +26,9 @@ const fallbackTheme = {
 } as const
 
 export type SidebarGroup = {
-  header: "BRANCH" | "WORKTREE" | "WORKING TREE" | "PULL REQUEST"
+  header: "BRANCH" | "WORKTREE" | "WORKING TREE" | "PULL REQUEST" | "STATUS"
   fact: string
-  tone: "text" | "primary" | "success" | "warning" | "error"
+  tone: "text" | "muted" | "primary" | "success" | "warning" | "error"
   stale: boolean
 }
 
@@ -73,7 +73,10 @@ function workingTreeFact(
 
 function pullRequestFact(snapshot: RefreshSnapshot, width: number): string {
   const remote = snapshot.remote.value
-  if (!remote || remote.kind === "none") return "none"
+  if (snapshot.remote.status === "loading") return "loading"
+  if (snapshot.remote.status === "error") return "refresh failed"
+  if (!remote) return "loading"
+  if (remote.kind === "none") return "no pull request"
   if (remote.kind === "unavailable") return fit(remote.message, width)
 
   const checks = remote.checks
@@ -92,8 +95,7 @@ function pullRequestFact(snapshot: RefreshSnapshot, width: number): string {
 
 function pullRequestTone(snapshot: RefreshSnapshot): SidebarGroup["tone"] {
   const remote = snapshot.remote.value
-  if (remote?.kind === "unavailable") return "error"
-  if (!remote || remote.kind === "none") return "text"
+  if (snapshot.remote.status !== "ready" || !remote || remote.kind !== "ready") return "muted"
   if (remote.checks.failing > 0) return "error"
   if (remote.checks.pending > 0) return "warning"
   return "success"
@@ -101,6 +103,16 @@ function pullRequestTone(snapshot: RefreshSnapshot): SidebarGroup["tone"] {
 
 export function buildSidebarGroups(snapshot: RefreshSnapshot, width: number): SidebarGroup[] {
   const local = snapshot.local.value
+  if (snapshot.local.status === "error" && !local) {
+    return [
+      {
+        header: "STATUS",
+        fact: "Git status unavailable",
+        tone: "muted",
+        stale: false,
+      },
+    ]
+  }
   if (!local?.repository) return []
 
   return [
@@ -153,6 +165,7 @@ export function GitSidebar(props: GitSidebarProps) {
   }
   const tones = {
     text: theme.text,
+    muted: theme.muted,
     primary: theme.primary,
     success: theme.success,
     warning: theme.warning,
