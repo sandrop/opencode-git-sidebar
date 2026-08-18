@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { expect, it } from "vitest"
@@ -20,6 +20,9 @@ it("collects staged, modified, and untracked files from a real repository", asyn
   git("add", "staged.ts")
   writeFileSync(join(repository, "committed.ts"), "export const committed = false\n")
   writeFileSync(join(repository, "untracked.ts"), "export const untracked = true\n")
+  mkdirSync(join(repository, "nested"))
+  writeFileSync(join(repository, "nested", "one.ts"), "export const one = true\n")
+  writeFileSync(join(repository, "nested", "two.ts"), "export const two = true\n")
 
   await expect(collectGitState({ cwd: repository })).resolves.toEqual({
     repository: true,
@@ -27,6 +30,6 @@ it("collects staged, modified, and untracked files from a real repository", asyn
     worktree: basename(repository),
     staged: 1,
     modified: 1,
-    untracked: 1,
+    untracked: 3,
   })
 })

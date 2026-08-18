@@ -56,11 +56,16 @@ export async function collectGitState(input: {
   signal?: AbortSignal
 }): Promise<GitState> {
   const runner = input.runner ?? runCommand
-  const result = await runner("git", ["status", "--porcelain=v2", "--branch"], {
-    cwd: input.cwd,
-    timeoutMs: 2_000,
-    signal: input.signal,
-  })
+  const result = await runner(
+    "git",
+    ["status", "--porcelain=v2", "--branch", "--untracked-files=all"],
+    {
+      cwd: input.cwd,
+      timeoutMs: 2_000,
+      signal: input.signal,
+      env: { ...process.env, LANG: "C", LC_ALL: "C" },
+    },
+  )
 
   if (!result.ok) {
     if (result.reason === "exit" && /not a git repository/i.test(result.stderr)) {

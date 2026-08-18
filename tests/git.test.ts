@@ -69,7 +69,10 @@ it("collects status in the supplied worktree", async () => {
   })
   expect(runner).toHaveBeenCalledWith(
     "git",
-    ["status", "--porcelain=v2", "--branch"],
-    expect.objectContaining({ cwd: "/repo/sidebar" }),
+    ["status", "--porcelain=v2", "--branch", "--untracked-files=all"],
+    expect.objectContaining({
+      cwd: "/repo/sidebar",
+      env: expect.objectContaining({ LANG: "C", LC_ALL: "C" }),
+    }),
   )
 })

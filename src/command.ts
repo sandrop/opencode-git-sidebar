@@ -10,7 +10,12 @@ export type CommandResult = {
 export type CommandRunner = (
   executable: string,
   args: readonly string[],
-  input: { cwd: string; timeoutMs: number; signal?: AbortSignal },
+  input: {
+    cwd: string
+    timeoutMs: number
+    signal?: AbortSignal
+    env?: NodeJS.ProcessEnv
+  },
 ) => Promise<CommandResult>
 
 export const runCommand: CommandRunner = (executable, args, input) =>
@@ -22,8 +27,10 @@ export const runCommand: CommandRunner = (executable, args, input) =>
         cwd: input.cwd,
         timeout: input.timeoutMs,
         signal: input.signal,
+        env: input.env,
         shell: false,
         encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
       },
       (error, stdout, stderr) => {
         if (!error) {

@@ -28,6 +28,17 @@ describe("runCommand", () => {
     })
   })
 
+  it("preserves command output larger than one megabyte", async () => {
+    const result = await runCommand(
+      process.execPath,
+      ["-e", "process.stdout.write('x'.repeat(1_100_000))"],
+      { cwd: tmpdir(), timeoutMs: 1_000 },
+    )
+
+    expect(result).toMatchObject({ ok: true })
+    expect(result.stdout).toHaveLength(1_100_000)
+  })
+
   it("classifies a timed-out command", async () => {
     const result = await runCommand(process.execPath, ["-e", "setTimeout(() => {}, 10_000)"], {
       cwd: tmpdir(),
