@@ -1,4 +1,3 @@
-import { basename } from "node:path"
 import { runCommand, type CommandResult, type CommandRunner } from "./command.js"
 
 type GitStatus = {
@@ -10,7 +9,7 @@ type GitStatus = {
 
 export type GitState =
   | { repository: false }
-  | ({ repository: true; worktree: string } & GitStatus)
+  | ({ repository: true; worktreePath: string; workingTreePath: string } & GitStatus)
 
 export class GitCollectionError extends Error {
   readonly reason: NonNullable<CommandResult["reason"]>
@@ -51,7 +50,8 @@ export function parseGitStatus(output: string): GitStatus {
 }
 
 export async function collectGitState(input: {
-  cwd: string
+  worktreePath: string
+  workingTreePath: string
   runner?: CommandRunner
   signal?: AbortSignal
 }): Promise<GitState> {
@@ -60,7 +60,7 @@ export async function collectGitState(input: {
     "git",
     ["status", "--porcelain=v2", "--branch", "--untracked-files=all"],
     {
-      cwd: input.cwd,
+      cwd: input.worktreePath,
       timeoutMs: 2_000,
       signal: input.signal,
       env: { ...process.env, LANG: "C", LC_ALL: "C" },
@@ -76,7 +76,8 @@ export async function collectGitState(input: {
 
   return {
     repository: true,
-    worktree: basename(input.cwd),
+    worktreePath: input.worktreePath,
+    workingTreePath: input.workingTreePath,
     ...parseGitStatus(result.stdout),
   }
 }

@@ -22,7 +22,8 @@ export type RefreshController = {
 }
 
 type RefreshContext = {
-  cwd: string
+  worktreePath: string
+  workingTreePath: string
   branch: string
 }
 
@@ -36,7 +37,9 @@ export const initialRefreshSnapshot = (): RefreshSnapshot => ({
 export function createRefreshController(deps: {
   options: ResolvedOptions
   context: () => RefreshContext
-  collectLocal: (input: { cwd: string; signal: AbortSignal }) => Promise<GitState>
+  collectLocal: (
+    input: Pick<RefreshContext, "worktreePath" | "workingTreePath"> & { signal: AbortSignal },
+  ) => Promise<GitState>
   collectRemote: (input: RefreshContext & { signal: AbortSignal }) => Promise<PullRequestState>
   onChange: (snapshot: RefreshSnapshot) => void
 }): RefreshController {
@@ -58,7 +61,8 @@ export function createRefreshController(deps: {
     if (!disposed) deps.onChange(snapshot)
   }
 
-  const keyFor = ({ cwd, branch }: RefreshContext) => `${cwd}\0${branch}`
+  const keyFor = ({ worktreePath, workingTreePath, branch }: RefreshContext) =>
+    `${worktreePath}\0${workingTreePath}\0${branch}`
 
   const observeContext = () => {
     const hostContext = deps.context()
@@ -104,13 +108,14 @@ export function createRefreshController(deps: {
       let refreshRemoteAfter = refreshRemoteAfterQueue || observed.changed
       try {
         const value = await deps.collectLocal({
-          cwd: context.cwd,
+          worktreePath: context.worktreePath,
+          workingTreePath: context.workingTreePath,
           signal: abortController.signal,
         })
         if (contextVersion !== version || keyFor(activeContext ?? context) !== contextKey) return
 
         if (value.repository && value.branch !== context.branch) {
-          activeContext = { cwd: context.cwd, branch: value.branch }
+          activeContext = { ...context, branch: value.branch }
           contextVersion += 1
           snapshot = {
             local: { value, stale: false, status: "ready" },

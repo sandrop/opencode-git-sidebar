@@ -49,12 +49,18 @@ The source defaults are exported as `DEFAULT_OPTIONS` near the top of
 
 ## Sidebar
 
-The sidebar displays four vertical groups:
+The sidebar displays five vertical groups:
 
 - **Branch**: the active Git branch, or `detached HEAD`
-- **Worktree**: the active worktree directory name
-- **Working Tree**: staged, modified, and untracked file counts
+- **Worktree**: the Git worktree path in compact `parent/basename` form
+- **Working Tree**: the current working directory in compact `parent/basename`
+  form
+- **Status**: retained staged, modified, and untracked file counts
 - **Pull Request**: the current branch's GitHub pull request and check summary
+
+OPS-0013 introduced this five-group layout. Long compact paths are truncated to
+the sidebar width. Status omits zero-valued counts and shows `clean` when all
+three counts are zero.
 
 Select the clickable `refresh` action in the Git header to refresh all groups.
 The command palette provides the same action as `Git Sidebar: Refresh`.
@@ -64,6 +70,9 @@ errors, and missing or unsupported GitHub remotes show muted
 `GitHub unavailable` while the local Git groups continue to work. Pull Request
 shows muted `loading`, `refresh failed`, or `no pull request` states separately.
 Transient failures retain the last successful Pull Request value as stale.
+Pull request lookup uses the tracked upstream head when one exists and falls
+back to the active local branch when no upstream is configured. A successful
+lookup with no matching pull request explicitly shows `no pull request`.
 
 An initial local Git failure shows muted `Git status unavailable`. Later local
 failures retain the last successful Git values as stale. A confirmed non-Git

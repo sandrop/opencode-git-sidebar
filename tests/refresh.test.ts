@@ -8,7 +8,8 @@ it("runs both collectors immediately and on independent intervals", async () => 
   const local = vi.fn().mockResolvedValue({
     repository: true,
     branch: "feat/sidebar",
-    worktree: "repo",
+    worktreePath: "/repo",
+    workingTreePath: "/repo",
     staged: 0,
     modified: 0,
     untracked: 0,
@@ -16,7 +17,11 @@ it("runs both collectors immediately and on independent intervals", async () => 
   const remote = vi.fn().mockResolvedValue({ kind: "none" })
   const controller = createRefreshController({
     options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
-    context: () => ({ cwd: "/repo", branch: "feat/sidebar" }),
+    context: () => ({
+      worktreePath: "/repo",
+      workingTreePath: "/repo",
+      branch: "feat/sidebar",
+    }),
     collectLocal: local,
     collectRemote: remote,
     onChange: vi.fn(),
@@ -36,7 +41,8 @@ it("reuses in-flight work instead of overlapping collectors", async () => {
   const localState = {
     repository: true as const,
     branch: "feat/sidebar",
-    worktree: "repo",
+    worktreePath: "/repo",
+    workingTreePath: "/repo",
     staged: 0,
     modified: 0,
     untracked: 0,
@@ -50,7 +56,11 @@ it("reuses in-flight work instead of overlapping collectors", async () => {
   const remote = vi.fn(() => remoteResult)
   const controller = createRefreshController({
     options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
-    context: () => ({ cwd: "/repo", branch: "feat/sidebar" }),
+    context: () => ({
+      worktreePath: "/repo",
+      workingTreePath: "/repo",
+      branch: "feat/sidebar",
+    }),
     collectLocal: local,
     collectRemote: remote,
     onChange: vi.fn(),
@@ -75,7 +85,8 @@ it("retains the last successful value as stale when one collector fails", async 
   const localState = {
     repository: true as const,
     branch: "feat/sidebar",
-    worktree: "repo",
+    worktreePath: "/repo",
+    workingTreePath: "/repo",
     staged: 1,
     modified: 2,
     untracked: 3,
@@ -88,7 +99,11 @@ it("retains the last successful value as stale when one collector fails", async 
   const onChange = vi.fn()
   const controller = createRefreshController({
     options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
-    context: () => ({ cwd: "/repo", branch: "feat/sidebar" }),
+    context: () => ({
+      worktreePath: "/repo",
+      workingTreePath: "/repo",
+      branch: "feat/sidebar",
+    }),
     collectLocal: local,
     collectRemote: vi.fn().mockResolvedValue(remoteState),
     onChange,
@@ -107,7 +122,11 @@ it("marks an initial collection failure as an error rather than stale loading st
   const onChange = vi.fn()
   const controller = createRefreshController({
     options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
-    context: () => ({ cwd: "/repo", branch: "feat/sidebar" }),
+    context: () => ({
+      worktreePath: "/repo",
+      workingTreePath: "/repo",
+      branch: "feat/sidebar",
+    }),
     collectLocal: vi.fn().mockRejectedValue(new Error("git timed out")),
     collectRemote: vi.fn().mockRejectedValue(new Error("gh timed out")),
     onChange,
@@ -125,7 +144,8 @@ it("uses the successful local Git branch for remote collection when host state l
   const localState = {
     repository: true as const,
     branch: "branch-b",
-    worktree: "repo",
+    worktreePath: "/repo",
+    workingTreePath: "/repo",
     staged: 0,
     modified: 0,
     untracked: 0,
@@ -150,7 +170,11 @@ it("uses the successful local Git branch for remote collection when host state l
   )
   const controller = createRefreshController({
     options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
-    context: () => ({ cwd: "/repo", branch: "branch-a" }),
+    context: () => ({
+      worktreePath: "/repo",
+      workingTreePath: "/repo",
+      branch: "branch-a",
+    }),
     collectLocal: vi.fn().mockResolvedValue(localState),
     collectRemote: remote,
     onChange,
@@ -159,7 +183,11 @@ it("uses the successful local Git branch for remote collection when host state l
   await controller.refreshAll()
 
   expect(remote).toHaveBeenLastCalledWith(
-    expect.objectContaining({ cwd: "/repo", branch: "branch-b" }),
+    expect.objectContaining({
+      worktreePath: "/repo",
+      workingTreePath: "/repo",
+      branch: "branch-b",
+    }),
   )
   expect(remote).toHaveBeenCalledTimes(2)
   expect(onChange).toHaveBeenLastCalledWith({
@@ -181,7 +209,8 @@ it("invalidates old state and refreshes both sources when context changes", asyn
   const initialLocal = {
     repository: true as const,
     branch: "feat/sidebar",
-    worktree: "repo",
+    worktreePath: "/repo",
+    workingTreePath: "/repo",
     staged: 0,
     modified: 0,
     untracked: 0,
@@ -189,7 +218,8 @@ it("invalidates old state and refreshes both sources when context changes", asyn
   const changedLocal = {
     repository: true as const,
     branch: "fix/sidebar",
-    worktree: "other",
+    worktreePath: "/other",
+    workingTreePath: "/other",
     staged: 1,
     modified: 0,
     untracked: 0,
@@ -204,7 +234,11 @@ it("invalidates old state and refreshes both sources when context changes", asyn
     .mockImplementationOnce(() => changedLocalResult)
   const remote = vi.fn().mockResolvedValue({ kind: "none" as const })
   const onChange = vi.fn()
-  let context = { cwd: "/repo", branch: "feat/sidebar" }
+  let context = {
+    worktreePath: "/repo",
+    workingTreePath: "/repo",
+    branch: "feat/sidebar",
+  }
   const controller = createRefreshController({
     options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
     context: () => context,
@@ -215,7 +249,11 @@ it("invalidates old state and refreshes both sources when context changes", asyn
 
   controller.start()
   await vi.runAllTicks()
-  context = { cwd: "/other", branch: "fix/sidebar" }
+  context = {
+    worktreePath: "/other",
+    workingTreePath: "/other",
+    branch: "fix/sidebar",
+  }
   await vi.advanceTimersByTimeAsync(10_000)
 
   expect(onChange).toHaveBeenLastCalledWith({
@@ -228,10 +266,82 @@ it("invalidates old state and refreshes both sources when context changes", asyn
   await vi.runAllTicks()
 
   expect(local).toHaveBeenLastCalledWith(
-    expect.objectContaining({ cwd: "/other" }),
+    expect.objectContaining({ worktreePath: "/other", workingTreePath: "/other" }),
   )
   expect(remote).toHaveBeenLastCalledWith(
-    expect.objectContaining({ cwd: "/other", branch: "fix/sidebar" }),
+    expect.objectContaining({
+      worktreePath: "/other",
+      workingTreePath: "/other",
+      branch: "fix/sidebar",
+    }),
+  )
+  expect(local).toHaveBeenCalledTimes(2)
+  expect(remote).toHaveBeenCalledTimes(2)
+})
+
+it("invalidates old state when only the working-tree path changes", async () => {
+  const initialLocal = {
+    repository: true as const,
+    branch: "feat/sidebar",
+    worktreePath: "/repo",
+    workingTreePath: "/repo/packages/app",
+    staged: 0,
+    modified: 0,
+    untracked: 0,
+  }
+  const changedLocal = {
+    ...initialLocal,
+    workingTreePath: "/repo/packages/docs",
+  }
+  let resolveChangedLocal!: (value: typeof changedLocal) => void
+  const changedLocalResult = new Promise<typeof changedLocal>(
+    (resolve) => (resolveChangedLocal = resolve),
+  )
+  const local = vi
+    .fn()
+    .mockResolvedValueOnce(initialLocal)
+    .mockImplementationOnce(() => changedLocalResult)
+  const remote = vi.fn().mockResolvedValue({ kind: "none" as const })
+  const onChange = vi.fn()
+  let context = {
+    worktreePath: "/repo",
+    workingTreePath: "/repo/packages/app",
+    branch: "feat/sidebar",
+  }
+  const controller = createRefreshController({
+    options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
+    context: () => context,
+    collectLocal: local,
+    collectRemote: remote,
+    onChange,
+  })
+
+  controller.start()
+  await vi.runAllTicks()
+  context = { ...context, workingTreePath: "/repo/packages/docs" }
+  await vi.advanceTimersByTimeAsync(10_000)
+
+  expect(onChange).toHaveBeenLastCalledWith({
+    local: { value: null, stale: false, status: "loading" },
+    remote: { value: null, stale: false, status: "loading" },
+  })
+  expect(remote).toHaveBeenCalledTimes(1)
+
+  resolveChangedLocal(changedLocal)
+  await vi.runAllTicks()
+
+  expect(local).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      worktreePath: "/repo",
+      workingTreePath: "/repo/packages/docs",
+    }),
+  )
+  expect(remote).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      worktreePath: "/repo",
+      workingTreePath: "/repo/packages/docs",
+      branch: "feat/sidebar",
+    }),
   )
   expect(local).toHaveBeenCalledTimes(2)
   expect(remote).toHaveBeenCalledTimes(2)
@@ -254,7 +364,8 @@ it("waits for an old remote request before collecting the changed context", asyn
     .mockResolvedValueOnce({
       repository: true as const,
       branch: "feat/sidebar",
-      worktree: "repo",
+      worktreePath: "/repo",
+      workingTreePath: "/repo",
       staged: 0,
       modified: 0,
       untracked: 0,
@@ -262,7 +373,8 @@ it("waits for an old remote request before collecting the changed context", asyn
     .mockResolvedValueOnce({
       repository: true as const,
       branch: "fix/sidebar",
-      worktree: "other",
+      worktreePath: "/other",
+      workingTreePath: "/other",
       staged: 0,
       modified: 0,
       untracked: 0,
@@ -272,7 +384,11 @@ it("waits for an old remote request before collecting the changed context", asyn
     .mockImplementationOnce(() => oldRemoteResult)
     .mockResolvedValueOnce(newRemote)
   const onChange = vi.fn()
-  let context = { cwd: "/repo", branch: "feat/sidebar" }
+  let context = {
+    worktreePath: "/repo",
+    workingTreePath: "/repo",
+    branch: "feat/sidebar",
+  }
   const controller = createRefreshController({
     options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
     context: () => context,
@@ -283,7 +399,11 @@ it("waits for an old remote request before collecting the changed context", asyn
 
   await controller.refreshLocal()
   void controller.refreshRemote()
-  context = { cwd: "/other", branch: "fix/sidebar" }
+  context = {
+    worktreePath: "/other",
+    workingTreePath: "/other",
+    branch: "fix/sidebar",
+  }
   const changedRefresh = controller.refreshLocal()
 
   expect(remote).toHaveBeenCalledTimes(1)
@@ -293,7 +413,11 @@ it("waits for an old remote request before collecting the changed context", asyn
 
   expect(remote).toHaveBeenCalledTimes(2)
   expect(remote).toHaveBeenLastCalledWith(
-    expect.objectContaining({ cwd: "/other", branch: "fix/sidebar" }),
+    expect.objectContaining({
+      worktreePath: "/other",
+      workingTreePath: "/other",
+      branch: "fix/sidebar",
+    }),
   )
   expect(
     onChange.mock.calls.some(
@@ -309,7 +433,8 @@ it("queues changed-context local work and suppresses the old local result", asyn
   const oldLocal = {
     repository: true as const,
     branch: "feat/sidebar",
-    worktree: "repo",
+    worktreePath: "/repo",
+    workingTreePath: "/repo",
     staged: 0,
     modified: 0,
     untracked: 0,
@@ -317,7 +442,8 @@ it("queues changed-context local work and suppresses the old local result", asyn
   const newLocal = {
     repository: true as const,
     branch: "fix/sidebar",
-    worktree: "other",
+    worktreePath: "/other",
+    workingTreePath: "/other",
     staged: 1,
     modified: 0,
     untracked: 0,
@@ -332,7 +458,11 @@ it("queues changed-context local work and suppresses the old local result", asyn
     .mockResolvedValueOnce(newLocal)
   const onChange = vi.fn()
   const remote = vi.fn().mockResolvedValue({ kind: "none" as const })
-  let context = { cwd: "/repo", branch: "feat/sidebar" }
+  let context = {
+    worktreePath: "/repo",
+    workingTreePath: "/repo",
+    branch: "feat/sidebar",
+  }
   const controller = createRefreshController({
     options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
     context: () => context,
@@ -342,7 +472,11 @@ it("queues changed-context local work and suppresses the old local result", asyn
   })
 
   void controller.refreshLocal()
-  context = { cwd: "/other", branch: "fix/sidebar" }
+  context = {
+    worktreePath: "/other",
+    workingTreePath: "/other",
+    branch: "fix/sidebar",
+  }
   const changedRefresh = controller.refreshLocal()
 
   expect(local).toHaveBeenCalledTimes(1)
@@ -352,7 +486,7 @@ it("queues changed-context local work and suppresses the old local result", asyn
 
   expect(local).toHaveBeenCalledTimes(2)
   expect(local).toHaveBeenLastCalledWith(
-    expect.objectContaining({ cwd: "/other" }),
+    expect.objectContaining({ worktreePath: "/other", workingTreePath: "/other" }),
   )
   expect(
     onChange.mock.calls.some(
@@ -369,12 +503,18 @@ it("refreshes both values when remote observes a changed context first", async (
   const initialLocal = {
     repository: true as const,
     branch: "feat/sidebar",
-    worktree: "repo",
+    worktreePath: "/repo",
+    workingTreePath: "/repo",
     staged: 0,
     modified: 0,
     untracked: 0,
   }
-  const changedLocal = { ...initialLocal, branch: "fix/sidebar", worktree: "other" }
+  const changedLocal = {
+    ...initialLocal,
+    branch: "fix/sidebar",
+    worktreePath: "/other",
+    workingTreePath: "/other",
+  }
   const newRemote = { kind: "none" as const }
   let resolveNewRemote!: (value: typeof newRemote) => void
   const newRemoteResult = new Promise<typeof newRemote>(
@@ -390,7 +530,11 @@ it("refreshes both values when remote observes a changed context first", async (
     })
     .mockImplementationOnce(() => newRemoteResult)
   const onChange = vi.fn()
-  let context = { cwd: "/repo", branch: "feat/sidebar" }
+  let context = {
+    worktreePath: "/repo",
+    workingTreePath: "/repo",
+    branch: "feat/sidebar",
+  }
   const local = vi.fn().mockResolvedValueOnce(initialLocal).mockResolvedValueOnce(changedLocal)
   const controller = createRefreshController({
     options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
@@ -402,7 +546,11 @@ it("refreshes both values when remote observes a changed context first", async (
 
   await controller.refreshAll()
   onChange.mockClear()
-  context = { cwd: "/other", branch: "fix/sidebar" }
+  context = {
+    worktreePath: "/other",
+    workingTreePath: "/other",
+    branch: "fix/sidebar",
+  }
   const changedRefresh = controller.refreshRemote()
 
   expect(onChange).toHaveBeenLastCalledWith({
@@ -425,7 +573,8 @@ it("aborts active work and prevents timer or callback activity after disposal", 
   const localState = {
     repository: true as const,
     branch: "feat/sidebar",
-    worktree: "repo",
+    worktreePath: "/repo",
+    workingTreePath: "/repo",
     staged: 0,
     modified: 0,
     untracked: 0,
@@ -446,7 +595,11 @@ it("aborts active work and prevents timer or callback activity after disposal", 
   const onChange = vi.fn()
   const controller = createRefreshController({
     options: { localRefreshMs: 10_000, remoteRefreshMs: 30_000 },
-    context: () => ({ cwd: "/repo", branch: "feat/sidebar" }),
+    context: () => ({
+      worktreePath: "/repo",
+      workingTreePath: "/repo",
+      branch: "feat/sidebar",
+    }),
     collectLocal: local,
     collectRemote: remote,
     onChange,
@@ -469,7 +622,11 @@ it("aborts active work and prevents timer or callback activity after disposal", 
 })
 
 it("makes start and source refreshes no-ops after disposal", async () => {
-  const context = vi.fn(() => ({ cwd: "/repo", branch: "feat/sidebar" }))
+  const context = vi.fn(() => ({
+    worktreePath: "/repo",
+    workingTreePath: "/repo",
+    branch: "feat/sidebar",
+  }))
   const local = vi.fn().mockResolvedValue({ repository: false as const })
   const remote = vi.fn().mockResolvedValue({ kind: "none" as const })
   const onChange = vi.fn()
