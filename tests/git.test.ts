@@ -52,17 +52,24 @@ describe("parseGitStatus", () => {
   })
 })
 
-it("collects status in the supplied worktree", async () => {
+it("retains matching absolute worktree and working-tree paths for a normal checkout", async () => {
   const runner = vi.fn().mockResolvedValue({
     ok: true,
     stdout: "# branch.head feat/sidebar\n? new.ts\n",
     stderr: "",
   })
 
-  await expect(collectGitState({ cwd: "/repo/sidebar", runner })).resolves.toEqual({
+  await expect(
+    collectGitState({
+      worktreePath: "/repo/sidebar",
+      workingTreePath: "/repo/sidebar",
+      runner,
+    }),
+  ).resolves.toEqual({
     repository: true,
     branch: "feat/sidebar",
-    worktree: "sidebar",
+    worktreePath: "/repo/sidebar",
+    workingTreePath: "/repo/sidebar",
     staged: 0,
     modified: 0,
     untracked: 1,
@@ -75,4 +82,28 @@ it("collects status in the supplied worktree", async () => {
       env: expect.objectContaining({ LANG: "C", LC_ALL: "C" }),
     }),
   )
+})
+
+it("retains distinct absolute worktree and working-tree paths for an isolated checkout", async () => {
+  const runner = vi.fn().mockResolvedValue({
+    ok: true,
+    stdout: "# branch.head feat/sidebar\n",
+    stderr: "",
+  })
+
+  await expect(
+    collectGitState({
+      worktreePath: "/repo/worktrees/sidebar",
+      workingTreePath: "/repo/worktrees/sidebar/packages/plugin",
+      runner,
+    }),
+  ).resolves.toEqual({
+    repository: true,
+    branch: "feat/sidebar",
+    worktreePath: "/repo/worktrees/sidebar",
+    workingTreePath: "/repo/worktrees/sidebar/packages/plugin",
+    staged: 0,
+    modified: 0,
+    untracked: 0,
+  })
 })

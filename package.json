@@ -1,6 +1,6 @@
 {
   "name": "opencode-git-sidebar",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenCode TUI sidebar for Git and GitHub pull request status",
   "type": "module",
   "license": "MIT",

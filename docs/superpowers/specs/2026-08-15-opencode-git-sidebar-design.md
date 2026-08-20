@@ -13,13 +13,17 @@ request information in the session sidebar without consuming chat context.
 The first version supports:
 
 - Current Git branch
-- Current worktree directory name
-- Staged, modified, and untracked file counts
+- Current Git worktree path
+- Current working-tree path
+- Staged, modified, and untracked file counts in a separate Status group
 - Current GitHub pull request number, state, and check summary
 - Automatic local and remote refresh loops
 - Clickable and command-palette manual refresh
 - GitHub access through the authenticated `gh` CLI
 - Distribution as an MIT-licensed public package
+
+OPS-0013 refines the sidebar paths and pull request lookup while retaining the
+existing status counts and refresh behavior.
 
 The first version does not support:
 
@@ -57,9 +61,12 @@ BRANCH
 feat/sidebar
 -----------------------------------------------
 WORKTREE
-cobtask
+worktrees/feat-sidebar
 -----------------------------------------------
 WORKING TREE
+repo/src
+-----------------------------------------------
+STATUS
 3 modified  |  1 untracked
 -----------------------------------------------
 PULL REQUEST
@@ -71,8 +78,11 @@ must stay on one line at 28 visible columns or wider. The renderer may shorten
 check text before wrapping, but must not combine group headers and facts on one
 row.
 
-Working Tree omits zero-valued facts. A clean tree shows `clean`. Pull Request
-shows `no pull request` when the current branch has no associated pull request.
+Worktree and Working Tree show compact `parent/basename` paths and truncate them
+to the available width. Status retains staged, modified, and untracked counts,
+omits zero-valued facts, and shows `clean` when all counts are zero. Pull Request
+shows the explicit `no pull request` state when lookup succeeds but finds no
+associated pull request.
 
 The `refresh` header action is clickable. The same action is available from the
 command palette with command id `git-sidebar.refresh` and title
@@ -87,16 +97,22 @@ modified, and untracked entries. OpenCode state supplies the current branch when
 available; porcelain output provides the fallback for detached or transitional
 states.
 
-The Worktree group displays the basename of `api.state.path.worktree`. The
-collector falls back to `api.state.path.directory` only when OpenCode has not
-resolved the worktree path.
+The Worktree group displays `api.state.path.worktree` in compact
+`parent/basename` form. The collector falls back to `api.state.path.directory`
+only when OpenCode has not resolved the worktree path. The Working Tree group
+displays `api.state.path.directory` in the same compact form. The Status group
+retains the staged, modified, and untracked counts parsed from porcelain output.
 
 ### GitHub Pull Request
 
-The remote collector runs `gh pr view` for the current branch and requests JSON
-fields for PR number, state, and status checks. The collector reduces check
-results to a concise passed/total summary. Failed, pending, or cancelled checks
-must remain distinguishable from a fully passing result.
+The remote collector first resolves the tracked upstream head with
+`git rev-parse --abbrev-ref --symbolic-full-name @{upstream}`. It removes the
+remote prefix and runs `gh pr view` for that head; when no upstream is configured,
+it falls back to the active local branch. The command requests JSON fields for PR
+number, state, and status checks. The collector reduces check results to a
+concise passed/total summary. Failed, pending, or cancelled checks must remain
+distinguishable from a fully passing result. A successful lookup with no match
+returns the explicit `no pull request` state.
 
 GitHub lookup is optional. Missing `gh`, missing authentication, or a repository
 without a GitHub remote must not affect local Git information.
@@ -152,9 +168,12 @@ Unit tests cover:
 
 Component tests cover:
 
-- Four vertical groups in the approved order
+- Five vertical groups in the approved order
 - One header row and one fact row per group
 - Dividers between groups
+- Compact `parent/basename` Worktree and Working Tree paths
+- Retained staged, modified, and untracked counts under Status
+- Explicit `no pull request` rendering
 - Theme-token status styling
 - Clickable header refresh
 - Command-palette refresh registration
@@ -182,15 +201,19 @@ build, package-content inspection, and a local OpenCode installation smoke test.
 ## Acceptance Criteria
 
 1. OpenCode 1.18.18 loads the package through its `./tui` export.
-2. The sidebar shows Branch, Worktree, Working Tree, and Pull Request as vertical
-   groups with separate header and fact rows.
-3. Working Tree and Pull Request facts each stay on one row and use visual
+2. The sidebar shows Branch, Worktree, Working Tree, Status, and Pull Request as
+   vertical groups with separate header and fact rows.
+3. Status and Pull Request facts each stay on one row and use visual
    dividers between facts.
-4. The sidebar contains no Upstream group.
-5. Local Git refresh defaults to 10 seconds and remote refresh defaults to 30
+4. Worktree and Working Tree show compact `parent/basename` paths, while Status
+   retains staged, modified, and untracked counts.
+5. Pull request lookup uses the tracked upstream head, falls back to the local
+   branch when no upstream exists, and shows `no pull request` for no match.
+6. The sidebar contains no Upstream group.
+7. Local Git refresh defaults to 10 seconds and remote refresh defaults to 30
    seconds.
-6. Source defaults and `tui.json` tuple options can adjust both refresh rates.
-7. The header refresh action and command-palette action refresh local and remote
+8. Source defaults and `tui.json` tuple options can adjust both refresh rates.
+9. The header refresh action and command-palette action refresh local and remote
    state immediately.
-8. Missing GitHub access cannot break local Git status.
-9. All verification gates described above pass.
+10. Missing GitHub access cannot break local Git status.
+11. All verification gates described above pass.

@@ -42,7 +42,8 @@ const textOf = (element: TestElement) => textValue(element.props.children)
 
 const snapshot = (input?: {
   branch?: string
-  worktree?: string
+  worktreePath?: string
+  workingTreePath?: string
   staged?: number
   modified?: number
   untracked?: number
@@ -52,7 +53,8 @@ const snapshot = (input?: {
     value: {
       repository: true as const,
       branch: input?.branch ?? "feat/sidebar",
-      worktree: input?.worktree ?? "cobtask",
+      worktreePath: input?.worktreePath ?? "/repo/cobtask",
+      workingTreePath: input?.workingTreePath ?? "/repo/cobtask",
       staged: input?.staged ?? 0,
       modified: input?.modified ?? 0,
       untracked: input?.untracked ?? 0,
@@ -86,14 +88,15 @@ const slotContext = {
   theme: { current: colors },
 } as unknown as TuiSlotContext
 
-it("builds the approved four vertical groups", () => {
+it("builds the approved five vertical groups for a normal checkout", () => {
   const groups = buildSidebarGroups(
     {
       local: {
         value: {
           repository: true,
           branch: "feat/sidebar",
-          worktree: "cobtask",
+          worktreePath: "/Users/sandro/projects/cobtask",
+          workingTreePath: "/Users/sandro/projects/cobtask",
           staged: 2,
           modified: 3,
           untracked: 1,
@@ -119,11 +122,65 @@ it("builds the approved four vertical groups", () => {
     "BRANCH",
     "WORKTREE",
     "WORKING TREE",
+    "STATUS",
     "PULL REQUEST",
   ])
-  expect(groups[2].fact).toBe("2 staged | 3 mod | 1 new")
-  expect(groups[3].fact).toBe("#142 OPEN | 8/8 passing")
-  expect(groups.every((group) => group.fact.length <= 28)).toBe(true)
+  expect(groups[1].fact).toBe("projects/cobtask")
+  expect(groups[2].fact).toBe("projects/cobtask")
+  expect(groups[3].fact).toBe("2 staged | 3 mod | 1 new")
+  expect(groups[4].fact).toBe("#142 OPEN | 8/8 passing")
+  expect(groups.every((group) => stringWidth(group.fact) <= 28)).toBe(true)
+})
+
+it("renders distinct compact paths for an isolated checkout", () => {
+  const groups = buildSidebarGroups(
+    snapshot({
+      worktreePath: "/repo/worktrees/sidebar",
+      workingTreePath: "/repo/worktrees/sidebar/packages/plugin",
+    }),
+    28,
+  )
+
+  expect(groups.slice(1, 3)).toEqual([
+    {
+      header: "WORKTREE",
+      fact: "worktrees/sidebar",
+      tone: "text",
+      stale: false,
+    },
+    {
+      header: "WORKING TREE",
+      fact: "packages/plugin",
+      tone: "text",
+      stale: false,
+    },
+  ])
+})
+
+it("renders the filesystem root without changing trailing-separator compaction", () => {
+  const groups = buildSidebarGroups(
+    snapshot({ worktreePath: "/", workingTreePath: "/repo/cobtask/" }),
+    28,
+  )
+
+  expect(groups[1].fact).toBe("/")
+  expect(groups[2].fact).toBe("repo/cobtask")
+  expect(groups.slice(1, 3).every((group) => stringWidth(group.fact) <= 28)).toBe(true)
+})
+
+it("fits compact paths to the requested terminal width", () => {
+  const groups = buildSidebarGroups(
+    snapshot({
+      worktreePath: "/very-long-parent-name/very-long-worktree-name",
+      workingTreePath: "/another-long-parent-name/very-long-working-tree-name",
+    }),
+    28,
+  )
+
+  expect(groups[1].fact).toBe("very-long-parent-name/very-l")
+  expect(groups[2].fact).toBe("another-long-parent-name/ver")
+  expect(stringWidth(groups[1].fact)).toBe(28)
+  expect(stringWidth(groups[2].fact)).toBe(28)
 })
 
 it("hides the section outside a repository", () => {
@@ -175,13 +232,13 @@ it.each([
 ])("distinguishes Pull Request state %#", (remote, expected) => {
   const groups = buildSidebarGroups({ ...snapshot(), remote }, 28)
 
-  expect(groups[3].fact).toBe(expected)
-  expect(groups[3].tone).toBe("muted")
+  expect(groups[4].fact).toBe(expected)
+  expect(groups[4].tone).toBe("muted")
 })
 
 it("omits zero working-tree counts and renders clean when all counts are zero", () => {
-  expect(buildSidebarGroups(snapshot(), 28)[2].fact).toBe("clean")
-  expect(buildSidebarGroups(snapshot({ modified: 3 }), 28)[2].fact).toBe("3 modified")
+  expect(buildSidebarGroups(snapshot(), 28)[3].fact).toBe("clean")
+  expect(buildSidebarGroups(snapshot({ modified: 3 }), 28)[3].fact).toBe("3 modified")
 })
 
 it.each([
@@ -191,7 +248,7 @@ it.each([
   [17, "2 S | 3 M | 1 new"],
   [15, "2 S | 3 M | 1 ?"],
 ])("shortens working-tree labels in order to fit %i columns", (width, expected) => {
-  expect(buildSidebarGroups(snapshot({ staged: 2, modified: 3, untracked: 1 }), width)[2].fact).toBe(
+  expect(buildSidebarGroups(snapshot({ staged: 2, modified: 3, untracked: 1 }), width)[3].fact).toBe(
     expected,
   )
 })
@@ -201,11 +258,11 @@ it.each([
   [{ total: 8, passing: 6, pending: 2, failing: 0 }, "#142 OPEN | 2/8 pending"],
   [{ total: 8, passing: 8, pending: 0, failing: 0 }, "#142 OPEN | 8/8 passing"],
 ])("summarizes pull-request checks by priority", (checks, expected) => {
-  expect(buildSidebarGroups(snapshot({ checks }), 28)[3].fact).toBe(expected)
+  expect(buildSidebarGroups(snapshot({ checks }), 28)[4].fact).toBe(expected)
 })
 
 it("shortens only a passing pull-request summary when required", () => {
-  expect(buildSidebarGroups(snapshot(), 19)[3].fact).toBe("#142 OPEN | 8/8 ok")
+  expect(buildSidebarGroups(snapshot(), 19)[4].fact).toBe("#142 OPEN | 8/8 ok")
 })
 
 it("fits CJK facts to 28 terminal cells", () => {
@@ -269,9 +326,12 @@ it("renders the approved vertical stack with themed rows and ASCII dividers", ()
     "feat/sidebar",
     "----------------------------",
     "WORKTREE",
-    "cobtask",
+    "repo/cobtask",
     "----------------------------",
     "WORKING TREE",
+    "repo/cobtask",
+    "----------------------------",
+    "STATUS",
     "clean",
     "----------------------------",
     "PULL REQUEST",
@@ -281,8 +341,32 @@ it("renders the approved vertical stack with themed rows and ASCII dividers", ()
   const row = (text: string) => rows.find((element) => textOf(element) === text)
   expect(row("BRANCH")?.props.fg).toBe(colors.textMuted)
   expect(row("feat/sidebar")?.props.fg).toBe(colors.primary)
+  expect(row("repo/cobtask")?.props.fg).toBe(colors.text)
   expect(row("clean")?.props.fg).toBe(colors.success)
+  expect(row("#142 OPEN | 8/8 passing")?.props.fg).toBe(colors.success)
   expect(row("----------------------------")?.props.fg).toBe(colors.border)
+})
+
+it("mutes all stale local and pull-request facts", () => {
+  const staleSnapshot = snapshot({
+    worktreePath: "/repo/worktrees/sidebar",
+    workingTreePath: "/repo/worktrees/sidebar/packages/plugin",
+  })
+  staleSnapshot.local.stale = true
+  staleSnapshot.remote.stale = true
+  const renderSidebar = sidebarSlot({} as TuiPluginApi, () => staleSnapshot, vi.fn()).slots
+    .sidebar_content
+  const view = renderSidebar?.(slotContext, { session_id: "session" }) as unknown as TestElement
+  const rows = elements(view.props.children)
+  const row = (text: string) => rows.find((element) => textOf(element) === text)
+
+  expect([
+    row("feat/sidebar")?.props.fg,
+    row("worktrees/sidebar")?.props.fg,
+    row("packages/plugin")?.props.fg,
+    row("clean")?.props.fg,
+    row("#142 OPEN | 8/8 passing")?.props.fg,
+  ]).toEqual(Array(5).fill(colors.textMuted))
 })
 
 it("keeps the renderer and dividers fixed at 28 columns", () => {
@@ -296,7 +380,7 @@ it("keeps the renderer and dividers fixed at 28 columns", () => {
 
   expect(view.props.width).toBe(28)
   expect(rows[0].props.width).toBe(28)
-  expect(rows.filter((row) => textOf(row) === "----------------------------")).toHaveLength(3)
+  expect(rows.filter((row) => textOf(row) === "----------------------------")).toHaveLength(4)
 })
 
 it("invokes refresh from the header control", () => {

@@ -1,4 +1,5 @@
 /** @jsxImportSource @opentui/solid */
+import { basename, dirname } from "node:path"
 import { createTextAttributes } from "@opentui/core"
 import type {
   TuiPluginApi,
@@ -45,6 +46,12 @@ function fit(value: string, width: number): string {
     resultWidth += segmentWidth
   }
   return result
+}
+
+function compactPath(value: string, width: number): string {
+  const name = basename(value)
+  const parent = basename(dirname(value))
+  return fit(parent ? `${parent}/${name}` : name || value, width)
 }
 
 function workingTreeFact(
@@ -124,12 +131,18 @@ export function buildSidebarGroups(snapshot: RefreshSnapshot, width: number): Si
     },
     {
       header: "WORKTREE",
-      fact: fit(local.worktree, width),
+      fact: compactPath(local.worktreePath, width),
       tone: "text",
       stale: snapshot.local.stale,
     },
     {
       header: "WORKING TREE",
+      fact: compactPath(local.workingTreePath, width),
+      tone: "text",
+      stale: snapshot.local.stale,
+    },
+    {
+      header: "STATUS",
       fact: workingTreeFact(local, width),
       tone:
         local.staged === 0 && local.modified === 0 && local.untracked === 0 ? "success" : "warning",

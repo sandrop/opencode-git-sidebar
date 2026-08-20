@@ -120,12 +120,22 @@ describe("parsePullRequestJson", () => {
 })
 
 describe("collectPullRequest", () => {
+  const trackedUpstream: CommandResult = {
+    ok: true,
+    stdout: "origin/feat/sidebar\n",
+    stderr: "",
+  }
+
   const classificationCases = [
-    ["gh missing", { ok: false, stdout: "", stderr: "", reason: "missing" }, "unavailable"],
+    [
+      "gh missing",
+      { ok: false, stdout: "", stderr: "", reason: "missing" },
+      { kind: "unavailable", message: "GitHub unavailable" },
+    ],
     [
       "not authenticated",
       { ok: false, stdout: "", stderr: "authenticate first", reason: "exit" },
-      "unavailable",
+      { kind: "unavailable", message: "GitHub unavailable" },
     ],
     [
       "unsupported remote",
@@ -135,7 +145,7 @@ describe("collectPullRequest", () => {
         stderr: "none of the git remotes point to a known GitHub host",
         reason: "exit",
       },
-      "unavailable",
+      { kind: "unavailable", message: "GitHub unavailable" },
     ],
     [
       "no PR",
@@ -145,31 +155,128 @@ describe("collectPullRequest", () => {
         stderr: "no pull requests found for branch",
         reason: "exit",
       },
-      "none",
+      { kind: "none" },
     ],
   ] satisfies ReadonlyArray<
-    readonly [string, CommandResult, PullRequestState["kind"]]
+    readonly [string, CommandResult, PullRequestState]
   >
 
-  it.each(classificationCases)("classifies %s", async (_name, result, kind) => {
-    const runner = vi.fn<CommandRunner>().mockResolvedValue(result)
+  it.each(classificationCases)("classifies %s", async (_name, result, expected) => {
+    const runner = vi
+      .fn<CommandRunner>()
+      .mockResolvedValueOnce(trackedUpstream)
+      .mockResolvedValueOnce(result)
 
     await expect(
       collectPullRequest({ cwd: "/repo", branch: "feat/sidebar", runner }),
-    ).resolves.toMatchObject({ kind })
+    ).resolves.toEqual(expected)
   })
 
-  it("runs gh for the supplied branch and worktree", async () => {
-    const runner = vi.fn<CommandRunner>().mockResolvedValue({
-      ok: true,
-      stdout: JSON.stringify({ number: 142, state: "OPEN", statusCheckRollup: [] }),
-      stderr: "",
-    })
+  it("resolves the PR from the tracked upstream for an isolated local branch", async () => {
+    const runner = vi
+      .fn<CommandRunner>()
+      .mockResolvedValueOnce(trackedUpstream)
+      .mockResolvedValueOnce({
+        ok: true,
+        stdout: JSON.stringify({ number: 266, state: "OPEN", statusCheckRollup: [] }),
+        stderr: "",
+      })
 
     await expect(
-      collectPullRequest({ cwd: "/repo/sidebar", branch: "feat/sidebar", runner }),
-    ).resolves.toMatchObject({ kind: "ready", number: 142 })
-    expect(runner).toHaveBeenCalledWith(
+      collectPullRequest({ cwd: "/repo/sidebar", branch: "worktree-feat+sidebar", runner }),
+    ).resolves.toMatchObject({ kind: "ready", number: 266 })
+    expect(runner).toHaveBeenNthCalledWith(
+      1,
+      "git",
+      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+      expect.objectContaining({ cwd: "/repo/sidebar", timeoutMs: 10_000 }),
+    )
+    expect(runner).toHaveBeenNthCalledWith(
+      2,
+      "gh",
+      ["pr", "view", "feat/sidebar", "--json", "number,state,statusCheckRollup"],
+      expect.objectContaining({ cwd: "/repo/sidebar", timeoutMs: 10_000 }),
+    )
+  })
+
+  it("forces a C locale only for upstream resolution", async () => {
+    const runner = vi
+      .fn<CommandRunner>()
+      .mockResolvedValueOnce(trackedUpstream)
+      .mockResolvedValueOnce({
+        ok: true,
+        stdout: JSON.stringify({ number: 266, state: "OPEN", statusCheckRollup: [] }),
+        stderr: "",
+      })
+
+    await collectPullRequest({ cwd: "/repo/sidebar", branch: "worktree-feat+sidebar", runner })
+
+    expect(runner).toHaveBeenNthCalledWith(
+      1,
+      "git",
+      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+      expect.objectContaining({
+        env: expect.objectContaining({ LANG: "C", LC_ALL: "C" }),
+      }),
+    )
+    expect(runner.mock.calls[1]?.[2]).not.toHaveProperty("env")
+  })
+
+  it("falls back to the local branch when no upstream exists", async () => {
+    const runner = vi
+      .fn<CommandRunner>()
+      .mockResolvedValueOnce({
+        ok: false,
+        stdout: "",
+        stderr: "fatal: no upstream configured for branch 'worktree-feat+sidebar'",
+        reason: "exit",
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        stdout: JSON.stringify({ number: 266, state: "OPEN", statusCheckRollup: [] }),
+        stderr: "",
+      })
+
+    await collectPullRequest({ cwd: "/repo/sidebar", branch: "worktree-feat+sidebar", runner })
+
+    expect(runner).toHaveBeenNthCalledWith(
+      2,
+      "gh",
+      ["pr", "view", "worktree-feat+sidebar", "--json", "number,state,statusCheckRollup"],
+      expect.objectContaining({ cwd: "/repo/sidebar", timeoutMs: 10_000 }),
+    )
+  })
+
+  it("does not query the local branch when upstream resolution times out", async () => {
+    const runner = vi
+      .fn<CommandRunner>()
+      .mockResolvedValueOnce({ ok: false, stdout: "", stderr: "", reason: "timeout" })
+      .mockResolvedValueOnce({
+        ok: true,
+        stdout: JSON.stringify({ number: 266, state: "OPEN", statusCheckRollup: [] }),
+        stderr: "",
+      })
+
+    await expect(
+      collectPullRequest({ cwd: "/repo/sidebar", branch: "worktree-feat+sidebar", runner }),
+    ).rejects.toThrow("Git upstream resolution failed: timeout")
+    expect(runner).toHaveBeenCalledTimes(1)
+  })
+
+  it("strips a non-origin remote name from the tracked upstream", async () => {
+    const runner = vi
+      .fn<CommandRunner>()
+      .mockResolvedValueOnce({ ok: true, stdout: "upstream/feat/sidebar\n", stderr: "" })
+      .mockResolvedValueOnce({
+        ok: true,
+        stdout: JSON.stringify({ number: 266, state: "OPEN", statusCheckRollup: [] }),
+        stderr: "",
+      })
+
+    await collectPullRequest({ cwd: "/repo/sidebar", branch: "worktree-feat+sidebar", runner })
+
+    expect(runner).toHaveBeenNthCalledWith(
+      2,
       "gh",
       ["pr", "view", "feat/sidebar", "--json", "number,state,statusCheckRollup"],
       expect.objectContaining({ cwd: "/repo/sidebar", timeoutMs: 10_000 }),
@@ -182,7 +289,10 @@ describe("collectPullRequest", () => {
   ] satisfies ReadonlyArray<readonly [CommandResult, string]>)(
     "throws when collection fails with %s",
     async (result, message) => {
-      const runner = vi.fn<CommandRunner>().mockResolvedValue(result)
+      const runner = vi
+        .fn<CommandRunner>()
+        .mockResolvedValueOnce(trackedUpstream)
+        .mockResolvedValueOnce(result)
 
       await expect(
         collectPullRequest({ cwd: "/repo", branch: "feat/sidebar", runner }),

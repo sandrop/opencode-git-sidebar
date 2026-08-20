@@ -68,7 +68,15 @@ it("activates the sidebar, palette refresh, and controller lifecycle", async () 
   )
   const controllerInput = deps.createRefreshController.mock.calls[0][0]
   expect(controllerInput.context()).toEqual({
-    cwd: "/repo/worktree",
+    worktreePath: "/repo/worktree",
+    workingTreePath: "/repo/directory",
+    branch: "feat/sidebar",
+  })
+  api.state.path.worktree = ""
+  api.state.path.directory = "/repo/checkout"
+  expect(controllerInput.context()).toEqual({
+    worktreePath: "/repo/checkout",
+    workingTreePath: "/repo/checkout",
     branch: "feat/sidebar",
   })
   expect(controller.start).toHaveBeenCalledTimes(1)

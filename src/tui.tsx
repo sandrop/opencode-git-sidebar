@@ -62,12 +62,14 @@ export async function activate(
   const controller = deps.createRefreshController({
     options: resolveOptions(options),
     context: () => ({
-      cwd: api.state.path.worktree || api.state.path.directory,
+      worktreePath: api.state.path.worktree || api.state.path.directory,
+      workingTreePath: api.state.path.directory,
       branch: api.state.vcs?.branch ?? "",
     }),
-    collectLocal: ({ cwd, signal }) => deps.collectLocal({ cwd, signal, runner: deps.runner }),
-    collectRemote: ({ cwd, branch, signal }) =>
-      deps.collectRemote({ cwd, branch, signal, runner: deps.runner }),
+    collectLocal: ({ worktreePath, workingTreePath, signal }) =>
+      deps.collectLocal({ worktreePath, workingTreePath, signal, runner: deps.runner }),
+    collectRemote: ({ worktreePath, branch, signal }) =>
+      deps.collectRemote({ cwd: worktreePath, branch, signal, runner: deps.runner }),
     onChange: (next) => setSnapshot(next),
   })
 
