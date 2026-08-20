@@ -122,7 +122,7 @@ describe("parsePullRequestJson", () => {
 describe("collectPullRequest", () => {
   const trackedUpstream: CommandResult = {
     ok: true,
-    stdout: "origin/feat/sidebar\n",
+    stdout: "refs/heads/feat/sidebar\n",
     stderr: "",
   }
 
@@ -161,6 +161,15 @@ describe("collectPullRequest", () => {
     readonly [string, CommandResult, PullRequestState]
   >
 
+  it("returns no PR without running commands for a detached HEAD", async () => {
+    const runner = vi.fn<CommandRunner>()
+
+    await expect(
+      collectPullRequest({ cwd: "/repo", branch: "detached HEAD", runner }),
+    ).resolves.toEqual({ kind: "none" })
+    expect(runner).not.toHaveBeenCalled()
+  })
+
   it.each(classificationCases)("classifies %s", async (_name, result, expected) => {
     const runner = vi
       .fn<CommandRunner>()
@@ -188,7 +197,11 @@ describe("collectPullRequest", () => {
     expect(runner).toHaveBeenNthCalledWith(
       1,
       "git",
-      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+      [
+        "for-each-ref",
+        "--format=%(upstream:remoteref)",
+        "refs/heads/worktree-feat+sidebar",
+      ],
       expect.objectContaining({ cwd: "/repo/sidebar", timeoutMs: 10_000 }),
     )
     expect(runner).toHaveBeenNthCalledWith(
@@ -214,7 +227,11 @@ describe("collectPullRequest", () => {
     expect(runner).toHaveBeenNthCalledWith(
       1,
       "git",
-      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+      [
+        "for-each-ref",
+        "--format=%(upstream:remoteref)",
+        "refs/heads/worktree-feat+sidebar",
+      ],
       expect.objectContaining({
         env: expect.objectContaining({ LANG: "C", LC_ALL: "C" }),
       }),
@@ -226,10 +243,9 @@ describe("collectPullRequest", () => {
     const runner = vi
       .fn<CommandRunner>()
       .mockResolvedValueOnce({
-        ok: false,
+        ok: true,
         stdout: "",
-        stderr: "fatal: no upstream configured for branch 'worktree-feat+sidebar'",
-        reason: "exit",
+        stderr: "",
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -263,10 +279,14 @@ describe("collectPullRequest", () => {
     expect(runner).toHaveBeenCalledTimes(1)
   })
 
-  it("strips a non-origin remote name from the tracked upstream", async () => {
+  it("uses the branch from the tracked upstream remote ref", async () => {
     const runner = vi
       .fn<CommandRunner>()
-      .mockResolvedValueOnce({ ok: true, stdout: "upstream/feat/sidebar\n", stderr: "" })
+      .mockResolvedValueOnce({
+        ok: true,
+        stdout: "refs/heads/feat/sidebar\n",
+        stderr: "",
+      })
       .mockResolvedValueOnce({
         ok: true,
         stdout: JSON.stringify({ number: 266, state: "OPEN", statusCheckRollup: [] }),
@@ -279,6 +299,44 @@ describe("collectPullRequest", () => {
       2,
       "gh",
       ["pr", "view", "feat/sidebar", "--json", "number,state,statusCheckRollup"],
+      expect.objectContaining({ cwd: "/repo/sidebar", timeoutMs: 10_000 }),
+    )
+  })
+
+  it("requests the remote ref so slash-containing remote names need no parsing", async () => {
+    const runner = vi
+      .fn<CommandRunner>()
+      .mockResolvedValueOnce({
+        ok: true,
+        stdout: "refs/heads/feat/sidebar\n",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        stdout: JSON.stringify({ number: 266, state: "OPEN", statusCheckRollup: [] }),
+        stderr: "",
+      })
+
+    await collectPullRequest({
+      cwd: "/repo/sidebar",
+      branch: "worktree-feat+sidebar",
+      runner,
+    })
+
+    expect(runner).toHaveBeenNthCalledWith(
+      2,
+      "gh",
+      ["pr", "view", "feat/sidebar", "--json", "number,state,statusCheckRollup"],
+      expect.objectContaining({ cwd: "/repo/sidebar", timeoutMs: 10_000 }),
+    )
+    expect(runner).toHaveBeenNthCalledWith(
+      1,
+      "git",
+      [
+        "for-each-ref",
+        "--format=%(upstream:remoteref)",
+        "refs/heads/worktree-feat+sidebar",
+      ],
       expect.objectContaining({ cwd: "/repo/sidebar", timeoutMs: 10_000 }),
     )
   })

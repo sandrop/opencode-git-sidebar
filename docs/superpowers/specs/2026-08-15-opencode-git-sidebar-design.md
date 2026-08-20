@@ -105,12 +105,14 @@ retains the staged, modified, and untracked counts parsed from porcelain output.
 
 ### GitHub Pull Request
 
-The remote collector first resolves the tracked upstream head with
-`git rev-parse --abbrev-ref --symbolic-full-name @{upstream}`. It removes the
-remote prefix and runs `gh pr view` for that head; when no upstream is configured,
-it falls back to the active local branch. The command requests JSON fields for PR
-number, state, and status checks. The collector reduces check results to a
-concise passed/total summary. Failed, pending, or cancelled checks must remain
+The remote collector first asks Git for the tracked upstream's remote ref with
+`git for-each-ref --format=%(upstream:remoteref) refs/heads/<local-branch>`.
+It removes the `refs/heads/` prefix and runs `gh pr view` for that head, so remote
+names containing `/` require no parsing. When no upstream is configured, it
+falls back to the active local branch. A detached HEAD returns the explicit
+`no pull request` state without a GitHub lookup. The command requests JSON fields
+for PR number, state, and status checks. The collector reduces check results to
+a concise passed/total summary. Failed, pending, or cancelled checks must remain
 distinguishable from a fully passing result. A successful lookup with no match
 returns the explicit `no pull request` state.
 

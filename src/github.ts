@@ -120,25 +120,26 @@ export async function collectPullRequest(input: {
   runner?: CommandRunner
   signal?: AbortSignal
 }): Promise<PullRequestState> {
+  if (input.branch === "detached HEAD") return { kind: "none" }
+
   const runner = input.runner ?? runCommand
   const commandInput = { cwd: input.cwd, timeoutMs: 10_000, signal: input.signal }
   const upstream = await runner(
     "git",
-    ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+    [
+      "for-each-ref",
+      "--format=%(upstream:remoteref)",
+      `refs/heads/${input.branch}`,
+    ],
     { ...commandInput, env: { ...process.env, LANG: "C", LC_ALL: "C" } },
   )
-  if (
-    !upstream.ok &&
-    !(upstream.reason === "exit" && /no upstream configured for branch/i.test(upstream.stderr))
-  ) {
+  if (!upstream.ok) {
     throw new Error(
       upstream.stderr.trim() ||
         `Git upstream resolution failed: ${upstream.reason ?? "exit"}`,
     )
   }
-  const branch = upstream.ok
-    ? upstream.stdout.trim().replace(/^[^/]+\//, "")
-    : input.branch
+  const branch = upstream.stdout.trim().replace(/^refs\/heads\//, "") || input.branch
   const result = await runner(
     "gh",
     ["pr", "view", branch, "--json", "number,state,statusCheckRollup"],
