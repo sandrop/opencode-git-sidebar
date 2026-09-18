@@ -1,3 +1,9 @@
+---
+status: active
+active_at: 2026-08-18
+retired_at:
+superseded_by:
+---
 ## Datetime
 
 2026-08-18 12:52:27 CEST
