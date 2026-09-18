@@ -49,7 +49,7 @@ The source defaults are exported as `DEFAULT_OPTIONS` near the top of
 
 ## Sidebar
 
-The sidebar displays five vertical groups:
+The sidebar displays these vertical groups:
 
 - **Branch**: the active Git branch, or `detached HEAD`
 - **Worktree**: the Git checkout root in compact `parent/basename` form
@@ -58,7 +58,11 @@ The sidebar displays five vertical groups:
 - **Status**: retained staged, modified, and untracked file counts
 - **Pull Request**: the current branch's GitHub pull request and check summary
 
-OPS-0013 introduced this five-group layout. Long branch names and compact paths
+When the full Worktree and Working Directory paths are equal, one
+**WORKTREE / WORKING DIRECTORY** section displays the compact path. Different
+full paths keep separate sections, even when their compact labels match.
+
+Long branch names and compact paths
 wrap across lines within the host sidebar's content width. The plugin inherits
 OpenCode's padding and adjusts its dividers and summaries when the available
 width changes. Status omits zero-valued counts and shows `clean` when all three

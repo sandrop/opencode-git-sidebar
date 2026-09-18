@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { testRender } from "@opentui/solid";
 import { jsx } from "@opentui/solid/jsx-runtime";
+import { createSignal } from "solid-js";
+import type { RefreshSnapshot } from "../src/refresh.js";
 import { GitSidebar } from "../src/sidebar.js";
 
 const branch =
 	"fix-OPS-0021-fix-opencode-git-sidebar-worktree-pr-branch-display-bugs";
 const worktree = `/repo/worktrees/${branch}`;
+const [workingDirectory, setWorkingDirectory] = createSignal(worktree);
 const screen = await testRender(
 	() =>
 		jsx("box", {
@@ -17,30 +20,32 @@ const screen = await testRender(
 				paddingRight: 1,
 				children: GitSidebar({
 					onRefresh: () => {},
-					snapshot: {
-						local: {
-							value: {
-								repository: true,
-								branch,
-								worktreePath: worktree,
-								workingTreePath: worktree,
-								staged: 2,
-								modified: 3,
-								untracked: 1,
+					get snapshot(): RefreshSnapshot {
+						return {
+							local: {
+								value: {
+									repository: true,
+									branch,
+									worktreePath: worktree,
+									workingTreePath: workingDirectory(),
+									staged: 2,
+									modified: 3,
+									untracked: 1,
+								},
+								stale: false,
+								status: "ready",
 							},
-							stale: false,
-							status: "ready",
-						},
-						remote: {
-							value: {
-								kind: "ready",
-								number: 142,
-								state: "OPEN",
-								checks: { total: 8, passing: 8, pending: 0, failing: 0 },
+							remote: {
+								value: {
+									kind: "ready",
+									number: 142,
+									state: "OPEN",
+									checks: { total: 8, passing: 8, pending: 0, failing: 0 },
+								},
+								stale: false,
+								status: "ready",
 							},
-							stale: false,
-							status: "ready",
-						},
+						};
 					},
 				}),
 			}),
@@ -55,49 +60,59 @@ try {
 		[50, "2 staged | 3 modified | 1 untracked", "#142 OPEN | 8/8 passing"],
 	] as const) {
 		screen.resize(width, 60);
-		await screen.renderOnce();
-		await screen.flush();
-		const rawRows = screen.captureCharFrame().split("\n");
-		const contentWidth = width - 5;
-		assert.equal(
-			rawRows[0].slice(width - 10, width - 3),
-			"refresh",
-			"refresh must reach the host content edge",
-		);
-		for (const row of rawRows.filter((line) => line.trim())) {
-			assert.equal(row.slice(0, 2), "  ");
-			assert.equal(row.slice(width - 3), "   ");
+		for (const combined of [true, false, true]) {
+			setWorkingDirectory(combined ? worktree : `${worktree}/nested`);
+			await screen.renderOnce();
+			await screen.flush();
+			const rawRows = screen.captureCharFrame().split("\n");
+			const contentWidth = width - 5;
+			assert.equal(
+				rawRows[0].slice(width - 10, width - 3),
+				"refresh",
+				"refresh must reach the host content edge",
+			);
+			for (const row of rawRows.filter((line) => line.trim())) {
+				assert.equal(row.slice(0, 2), "  ");
+				assert.equal(row.slice(width - 3), "   ");
+			}
+			const rows = rawRows.map((row) => row.slice(2, width - 3).trimEnd());
+			const divider = "-".repeat(contentWidth);
+			assert.equal(
+				rows.filter((row) => row === divider).length,
+				combined ? 3 : 4,
+				"dividers must fill the host content width",
+			);
+			const sections: string[][] = [[]];
+			for (const row of rows.slice(1)) {
+				if (row === divider) sections.push([]);
+				else sections[sections.length - 1].push(row);
+			}
+			assert.equal(sections.length, combined ? 4 : 5);
+			assert.equal(sections[0][0], "BRANCH");
+			const branchRows = sections[0].slice(1);
+			assert.ok(
+				branchRows.length > 1,
+				`long branch must wrap to multiple rows: ${branch}\n${rows.join("\n")}`,
+			);
+			assert.equal(branchRows.join(""), branch);
+			// Ignore whitespace introduced by wrapping the long combined header.
+			const sectionText = (index: number) =>
+				sections[index].join("").replaceAll(" ", "");
+			if (combined) {
+				assert.equal(
+					sectionText(1),
+					`WORKTREE/WORKINGDIRECTORYworktrees/${branch}`,
+				);
+			} else {
+				assert.equal(sectionText(1), `WORKTREEworktrees/${branch}`);
+				assert.equal(sectionText(2), `WORKINGDIRECTORY${branch}/nested`);
+			}
+			assert.ok(
+				rows.includes(status),
+				`status should use the measured width: ${contentWidth}`,
+			);
+			assert.ok(rows.includes(pr));
 		}
-		const rows = rawRows.map((row) => row.slice(2, width - 3).trimEnd());
-		const divider = "-".repeat(contentWidth);
-		assert.equal(
-			rows.filter((row) => row === divider).length,
-			4,
-			"dividers must fill the host content width",
-		);
-		const valueRows = (header: string) => {
-			const start = rows.indexOf(header);
-			assert.ok(start >= 0, `missing header: ${header}`);
-			const rest = rows.slice(start + 1);
-			const end = rest.indexOf(divider);
-			return end === -1 ? rest : rest.slice(0, end);
-		};
-		const branchRows = valueRows("BRANCH");
-		assert.ok(
-			branchRows.length > 1,
-			`long branch must wrap to multiple rows: ${branch}\n${rows.join("\n")}`,
-		);
-		assert.equal(branchRows.join(""), branch);
-		assert.equal(valueRows("WORKTREE").join(""), `worktrees/${branch}`);
-		assert.equal(
-			valueRows("WORKING DIRECTORY").join(""),
-			`worktrees/${branch}`,
-		);
-		assert.ok(
-			rows.includes(status),
-			`status should use the measured width: ${contentWidth}`,
-		);
-		assert.ok(rows.includes(pr));
 	}
 } finally {
 	screen.renderer.destroy();

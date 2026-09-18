@@ -56,7 +56,7 @@ const snapshot = (input?: {
 			repository: true as const,
 			branch: input?.branch ?? "feat/sidebar",
 			worktreePath: input?.worktreePath ?? "/repo/cobtask",
-			workingTreePath: input?.workingTreePath ?? "/repo/cobtask",
+			workingTreePath: input?.workingTreePath ?? "/repo/cobtask/src",
 			staged: input?.staged ?? 0,
 			modified: input?.modified ?? 0,
 			untracked: input?.untracked ?? 0,
@@ -90,7 +90,7 @@ const slotContext = {
 	theme: { current: colors },
 } as unknown as TuiSlotContext;
 
-it("builds the approved five vertical groups for a normal checkout", () => {
+it("combines equal checkout and working-directory paths into one section", () => {
 	const groups = buildSidebarGroups(
 		{
 			local: {
@@ -122,15 +122,13 @@ it("builds the approved five vertical groups for a normal checkout", () => {
 
 	expect(groups.map((group) => group.header)).toEqual([
 		"BRANCH",
-		"WORKTREE",
-		"WORKING DIRECTORY",
+		"WORKTREE / WORKING DIRECTORY",
 		"STATUS",
 		"PULL REQUEST",
 	]);
 	expect(groups[1].fact).toBe("projects/cobtask");
-	expect(groups[2].fact).toBe("projects/cobtask");
-	expect(groups[3].fact).toBe("2 staged | 3 mod | 1 new");
-	expect(groups[4].fact).toBe("#142 OPEN | 8/8 passing");
+	expect(groups[2].fact).toBe("2 staged | 3 mod | 1 new");
+	expect(groups[3].fact).toBe("#142 OPEN | 8/8 passing");
 	expect(groups.every((group) => stringWidth(group.fact) <= 28)).toBe(true);
 });
 
@@ -157,6 +155,36 @@ it("renders distinct compact paths for an isolated checkout", () => {
 			stale: false,
 		},
 	]);
+});
+
+it("keeps different full paths separate even when their compact labels match", () => {
+	const groups = buildSidebarGroups(
+		snapshot({
+			worktreePath: "/first/shared/repo",
+			workingTreePath: "/second/shared/repo",
+		}),
+		28,
+	);
+	expect(
+		groups.slice(1, 3).map(({ header, fact }) => ({ header, fact })),
+	).toEqual([
+		{ header: "WORKTREE", fact: "shared/repo" },
+		{ header: "WORKING DIRECTORY", fact: "shared/repo" },
+	]);
+});
+
+it("marks the combined path section stale after a local collection failure", () => {
+	const state = snapshot({
+		worktreePath: "/repo/cobtask",
+		workingTreePath: "/repo/cobtask",
+	});
+	state.local.stale = true;
+	expect(buildSidebarGroups(state, 28)[1]).toEqual({
+		header: "WORKTREE / WORKING DIRECTORY",
+		fact: "repo/cobtask",
+		tone: "text",
+		stale: true,
+	});
 });
 
 it("renders the filesystem root without changing trailing-separator compaction", () => {
@@ -362,7 +390,7 @@ it("renders the approved vertical stack with themed rows and ASCII dividers", ()
 		"repo/cobtask",
 		"----------------------------",
 		"WORKING DIRECTORY",
-		"repo/cobtask",
+		"cobtask/src",
 		"----------------------------",
 		"STATUS",
 		"clean",

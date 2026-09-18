@@ -40,6 +40,7 @@ export type SidebarGroup = {
 		| "BRANCH"
 		| "WORKTREE"
 		| "WORKING DIRECTORY"
+		| "WORKTREE / WORKING DIRECTORY"
 		| "PULL REQUEST"
 		| "STATUS";
 	fact: string;
@@ -129,6 +130,7 @@ export function buildSidebarGroups(
 		];
 	}
 	if (!local?.repository) return [];
+	const sameDirectory = local.worktreePath === local.workingTreePath;
 
 	return [
 		{
@@ -138,17 +140,21 @@ export function buildSidebarGroups(
 			stale: snapshot.local.stale,
 		},
 		{
-			header: "WORKTREE",
+			header: sameDirectory ? "WORKTREE / WORKING DIRECTORY" : "WORKTREE",
 			fact: compactPath(local.worktreePath),
 			tone: "text",
 			stale: snapshot.local.stale,
 		},
-		{
-			header: "WORKING DIRECTORY",
-			fact: compactPath(local.workingTreePath),
-			tone: "text",
-			stale: snapshot.local.stale,
-		},
+		...(sameDirectory
+			? []
+			: [
+					{
+						header: "WORKING DIRECTORY",
+						fact: compactPath(local.workingTreePath),
+						tone: "text",
+						stale: snapshot.local.stale,
+					} satisfies SidebarGroup,
+				]),
 		{
 			header: "STATUS",
 			fact: workingTreeFact(local, width),
