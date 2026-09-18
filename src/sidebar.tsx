@@ -6,10 +6,11 @@ import type {
 	TuiThemeCurrent,
 } from "@opencode-ai/plugin/tui";
 import { createTextAttributes } from "@opentui/core";
+import { createSignal, For } from "solid-js";
 import stringWidth from "string-width";
 import type { RefreshSnapshot } from "./refresh.js";
 
-const SIDEBAR_WIDTH = 28;
+const INITIAL_CONTENT_WIDTH = 28;
 
 type SidebarTheme = Partial<
 	Pick<
@@ -173,8 +174,9 @@ export type GitSidebarProps = {
 };
 
 export function GitSidebar(props: GitSidebarProps) {
-	const groups = buildSidebarGroups(props.snapshot, SIDEBAR_WIDTH);
-	if (groups.length === 0) return null;
+	const [contentWidth, setContentWidth] = createSignal(INITIAL_CONTENT_WIDTH);
+	const groups = () => buildSidebarGroups(props.snapshot, contentWidth());
+	if (groups().length === 0) return null;
 
 	const theme = {
 		text: props.theme?.text ?? fallbackTheme.text,
@@ -195,12 +197,14 @@ export function GitSidebar(props: GitSidebarProps) {
 	};
 
 	return (
-		<box flexDirection="column" width={SIDEBAR_WIDTH}>
-			<box
-				flexDirection="row"
-				justifyContent="space-between"
-				width={SIDEBAR_WIDTH}
-			>
+		<box
+			flexDirection="column"
+			width="100%"
+			onSizeChange={function () {
+				setContentWidth(this.width);
+			}}
+		>
+			<box flexDirection="row" justifyContent="space-between" width="100%">
 				<text fg={theme.text} attributes={createTextAttributes({ bold: true })}>
 					GIT
 				</text>
@@ -209,22 +213,27 @@ export function GitSidebar(props: GitSidebarProps) {
 					<text fg={theme.primary}>refresh</text>
 				</box>
 			</box>
-			{groups.map((group, index) => (
-				<>
-					{index > 0 ? (
-						<text fg={theme.border}>{"-".repeat(SIDEBAR_WIDTH)}</text>
-					) : null}
-					<text fg={theme.muted}>{group.header}</text>
-					<text
-						fg={group.stale ? theme.muted : tones[group.tone]}
-						width={SIDEBAR_WIDTH}
-						wrapMode="char"
-						flexShrink={0}
-					>
-						{group.fact}
-					</text>
-				</>
-			))}
+			{For({
+				get each() {
+					return groups();
+				},
+				children: (group, index) => (
+					<>
+						{index() > 0 ? (
+							<text fg={theme.border}>{"-".repeat(contentWidth())}</text>
+						) : null}
+						<text fg={theme.muted}>{group.header}</text>
+						<text
+							fg={group.stale ? theme.muted : tones[group.tone]}
+							width="100%"
+							wrapMode="char"
+							flexShrink={0}
+						>
+							{group.fact}
+						</text>
+					</>
+				),
+			})}
 		</box>
 	);
 }

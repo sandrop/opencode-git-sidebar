@@ -59,8 +59,10 @@ The sidebar displays five vertical groups:
 - **Pull Request**: the current branch's GitHub pull request and check summary
 
 OPS-0013 introduced this five-group layout. Long branch names and compact paths
-wrap across lines within the sidebar width. Status omits zero-valued counts and shows `clean` when all
-three counts are zero.
+wrap across lines within the host sidebar's content width. The plugin inherits
+OpenCode's padding and adjusts its dividers and summaries when the available
+width changes. Status omits zero-valued counts and shows `clean` when all three
+counts are zero.
 
 In a session, the plugin selects the latest completed Bash call with an explicit,
 absolute `workdir` from the tool parts available in OpenCode's session history.
@@ -106,9 +108,10 @@ directory still hides the complete Git section.
 
 Run `npm test`, `npm run typecheck`, and `npm run build` to verify changes.
 The sidebar wrapping test requires `bun` on PATH to run OpenTUI's native renderer
-in a subprocess. It checks complete long branch names and compact paths in a
-captured terminal frame. Unit tests also verify that Unicode fact strings retain
-all characters.
+in a subprocess with Solid's reactive browser export. It checks complete long
+branch names and compact paths in a padded terminal frame, then resizes the
+frame to verify right-edge placement and summary formatting. Unit tests also
+verify that Unicode fact strings retain all characters.
 
 ## License
 

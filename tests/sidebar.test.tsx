@@ -343,11 +343,15 @@ it("renders the approved vertical stack with themed rows and ASCII dividers", ()
 
 	expect(view).toMatchObject({
 		type: "box",
-		props: { flexDirection: "column", width: 28 },
+		props: { flexDirection: "column", width: "100%" },
 	});
 	expect(header).toMatchObject({
 		type: "box",
-		props: { flexDirection: "row", justifyContent: "space-between", width: 28 },
+		props: {
+			flexDirection: "row",
+			justifyContent: "space-between",
+			width: "100%",
+		},
 	});
 	expect(headerItems.map(textOf)).toEqual(["GIT", "refresh"]);
 	expect(rows.slice(1).map(textOf)).toEqual([
@@ -405,20 +409,19 @@ it("mutes all stale local and pull-request facts", () => {
 	]).toEqual(Array(5).fill(colors.textMuted));
 });
 
-it("keeps the renderer and dividers fixed at 28 columns", () => {
+it("inherits the host width for the header and wrapped values", () => {
 	const props = {
 		snapshot: snapshot(),
 		onRefresh: vi.fn(),
-		width: 10,
 	};
 	const view = GitSidebar(props) as unknown as TestElement;
 	const rows = elements(view.props.children);
 
-	expect(view.props.width).toBe(28);
-	expect(rows[0].props.width).toBe(28);
-	expect(
-		rows.filter((row) => textOf(row) === "----------------------------"),
-	).toHaveLength(4);
+	expect(view.props.width).toBe("100%");
+	expect(rows[0].props.width).toBe("100%");
+	const values = rows.filter((row) => row.props.wrapMode === "char");
+	expect(values).toHaveLength(5);
+	expect(values.every((row) => row.props.width === "100%")).toBe(true);
 });
 
 it("invokes refresh from the header control", () => {
